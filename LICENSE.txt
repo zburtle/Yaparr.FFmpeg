@@ -1,0 +1,17 @@
+Yaparr.FFmpeg
+Copyright (C) 2026 Zach Burtle
+
+The build scripts in this repository are free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. The licence is in COPYING.
+SPDX-License-Identifier: GPL-3.0-or-later
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+The FFmpeg that these scripts build
+  The FFmpeg program they build is under the GNU Lesser General Public License, version 2.1 or later, not under the
+  licence above. Each release includes its licence, the licences of what is built in, and the exact FFmpeg source it
+  was built from. See README.md.
+
+Contributions
+  Contributions are accepted under the same licence.
