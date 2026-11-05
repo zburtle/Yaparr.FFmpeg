@@ -58,8 +58,46 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # The Linux builds: on Ubuntu 22.04, so the program runs on any system with glibc 2.35 or newer.
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the build tools and libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm pkg-config git curl xz-utils zip \
+            libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxau-dev libxdmcp-dev libva-dev libdrm-dev xvfb
+
+      - name: Build
+        env:
+          FFMPEG_COMMIT: ${{ inputs.ffmpeg_commit }}
+        run: |
+          [ -n "$FFMPEG_COMMIT" ] || unset FFMPEG_COMMIT
+          bash build-linux.sh ${{ matrix.arch }}
+
+      - name: Check
+        run: xvfb-run -a bash verify.sh "out/$(sed 's/^NAME=//' out/name-linux-${{ matrix.arch }}.txt)/bin/ffmpeg"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ffmpeg-yaparr-linux-${{ matrix.arch }}
+          path: |
+            out/*.zip
+            out/name-linux-*.txt
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, build-linux]
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
@@ -70,6 +108,12 @@ jobs:
           name: ffmpeg-yaparr
           path: out
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ffmpeg-yaparr-linux-*
+          merge-multiple: true
+          path: out
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,11 +122,12 @@ jobs:
         run: |
           set -e
           name="$(sed 's/^NAME=//' out/name.txt)"
-          sha256sum "out/$name.zip" out/ffmpeg-*-source.tar.xz | sed 's# out/# #' > out/SHA256SUMS.txt
+          sha256sum out/ffmpeg-yaparr-*.zip out/ffmpeg-*-source.tar.xz | sed 's# out/# #' > out/SHA256SUMS.txt
           cat > notes.md <<EOF
-          FFmpeg built for Yaparr (https://github.com/zburtle/Yaparr) with only the parts Yaparr uses (LGPL, static, Windows x64). Yaparr downloads this when it needs to share or show a screen.
+          FFmpeg built for Yaparr (https://github.com/zburtle/Yaparr) with only the parts Yaparr uses (LGPL). Yaparr downloads this when it needs to share or show a screen.
 
-          - \`$name.zip\`: \`bin/ffmpeg.exe\`, the licence, \`SOURCE.txt\`, \`BUILD-INFO.txt\` (how it was configured) and the licences of what is built in.
+          - \`$name.zip\`: Windows x64, static. \`bin/ffmpeg.exe\`, the licence, \`SOURCE.txt\`, \`BUILD-INFO.txt\` (how it was configured) and the licences of what is built in.
+          - \`ffmpeg-yaparr-g*-linux-x64.zip\` and \`-linux-arm64.zip\`: Linux (glibc 2.35 or newer; VA-API is the computer's own). \`bin/ffmpeg\` and the same notices.
           - \`ffmpeg-*-source.tar.xz\`: the exact FFmpeg source this was built from.
           - Built by https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} at commit ${GITHUB_SHA}.
 
@@ -90,5 +135,5 @@ jobs:
           $(cat out/SHA256SUMS.txt)
           \`\`\`
           EOF
-          gh release create "$TAG" "out/$name.zip" out/ffmpeg-*-source.tar.xz out/SHA256SUMS.txt \
+          gh release create "$TAG" out/ffmpeg-yaparr-*.zip out/ffmpeg-*-source.tar.xz out/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "FFmpeg build for Yaparr ($TAG)" --notes-file notes.md
