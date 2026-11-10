@@ -13,6 +13,13 @@ fail() { echo "FAIL  $*"; failed=1; }
 has()  { grep -q -- "$2" <<<"$1"; }
 case "$FF" in *.exe) PLATFORM=windows ;; *) PLATFORM=linux ;; esac
 
+# Every option given is listed in the encoder's help: has_options <encoder> <option>...
+has_options() {
+  local encoder="$1" help opt; shift
+  help="$("$FF" -hide_banner -h encoder="$encoder" 2>&1)"
+  for opt in "$@"; do has "$help" "  -$opt " && ok "$encoder has option $opt" || fail "$encoder has no option $opt"; done
+}
+
 version="$("$FF" -hide_banner -version 2>&1)"
 echo "$version" | head -2
 
@@ -21,25 +28,26 @@ for bad in --enable-gpl --enable-nonfree --enable-version3 --enable-libx264 --en
   if has "$version" "$bad"; then fail "configured with $bad"; else ok "not configured with $bad"; fi
 done
 has "$version" "--enable-libvpx" && ok "has libvpx" || fail "no libvpx"
+has "$version" "--enable-libdav1d" && ok "has libdav1d" || fail "no libdav1d"
 
 encoders="$("$FF" -hide_banner -encoders 2>&1)"
 decoders="$("$FF" -hide_banner -decoders 2>&1)"
 filters="$("$FF" -hide_banner -filters 2>&1)"
 if [ "$PLATFORM" = windows ]; then
-  wanted_encoders="libvpx h264_nvenc h264_amf h264_qsv rawvideo"
+  wanted_encoders="libvpx h264_nvenc h264_amf h264_qsv av1_nvenc av1_amf av1_qsv rawvideo"
   wanted_filters="gfxcapture hwdownload format scale"
-  wanted_decoders="vp8 h264"
+  wanted_decoders="vp8 h264 libdav1d"
 else
-  wanted_encoders="libvpx h264_nvenc h264_vaapi rawvideo"
+  wanted_encoders="libvpx h264_nvenc h264_vaapi av1_nvenc av1_vaapi rawvideo"
   wanted_filters="hwupload format scale"
-  wanted_decoders="vp8 h264 rawvideo"
+  wanted_decoders="vp8 h264 libdav1d rawvideo"
 fi
 for e in $wanted_encoders; do has "$encoders" " $e " && ok "encoder $e" || fail "encoder $e is missing"; done
 for d in $wanted_decoders; do has "$decoders" " $d " && ok "decoder $d" || fail "decoder $d is missing"; done
 for f in $wanted_filters; do has "$filters" " $f " && ok "filter $f" || fail "filter $f is missing"; done
 
 # Nothing that should not be there: the GPL encoders, other video codecs, the network.
-for e in libx264 libx265 libopenh264 libaom mpeg4 hevc libsvtav1; do has "$encoders" " $e " && fail "encoder $e should not be in this build" || ok "no encoder $e"; done
+for e in libx264 libx265 libopenh264 libaom libaom-av1 mpeg4 hevc libsvtav1 librav1e; do has "$encoders" " $e " && fail "encoder $e should not be in this build" || ok "no encoder $e"; done
 
 if [ "$PLATFORM" = windows ]; then
   # The gfxcapture options Yaparr's command line uses (the build must have the October 2026 fixes, dup_frames among them).
@@ -52,6 +60,16 @@ if [ "$PLATFORM" = windows ]; then
     line="$("$FF" -hide_banner -h encoder="$1" 2>&1 | grep 'Supported pixel formats')"
     has "$line" " $2" && ok "$1 takes $2" || fail "$1 does not take $2 ($line)"
   done
+  for pair in "av1_qsv nv12" "av1_amf yuv420p" "av1_nvenc yuv420p"; do
+    set -- $pair
+    line="$("$FF" -hide_banner -h encoder="$1" 2>&1 | grep 'Supported pixel formats')"
+    has "$line" " $2" && ok "$1 takes $2" || fail "$1 does not take $2 ($line)"
+  done
+  # The options Yaparr's command line gives the AV1 encoders (the app builds them in FfmpegArgs.AddEncoder); an option that is not there
+  # makes FFmpeg refuse to start the encoder, which is how a share would silently fall back to H.264.
+  has_options av1_nvenc preset tune rc rc-lookahead bf forced-idr zerolatency
+  has_options av1_amf usage quality rc async_depth forced_idr header_insertion_mode
+  has_options av1_qsv preset scenario async_depth forced_idr
 else
   # The screen grabber and the options Yaparr's command line uses with it.
   devices="$("$FF" -hide_banner -devices 2>&1)"
@@ -60,6 +78,10 @@ else
   for opt in window_id draw_mouse video_size framerate; do has "$help" "$opt" && ok "x11grab option $opt" || fail "x11grab has no option $opt"; done
   line="$("$FF" -hide_banner -h encoder=h264_nvenc 2>&1 | grep 'Supported pixel formats')"
   has "$line" " yuv420p" && ok "h264_nvenc takes yuv420p" || fail "h264_nvenc does not take yuv420p ($line)"
+  has_options av1_nvenc preset tune rc rc-lookahead bf forced-idr zerolatency
+  has_options av1_vaapi profile
+  # Yaparr's command line also gives h264_vaapi -async_depth; if this FFmpeg has no such option the app has to stop passing it.
+  has_options h264_vaapi profile async_depth
 fi
 
 # Round trip: VP8 in an IVF stream, then back to raw pictures of the size that went in.

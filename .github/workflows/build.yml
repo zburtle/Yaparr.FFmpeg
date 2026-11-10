@@ -38,6 +38,7 @@ jobs:
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-libvpx
+            mingw-w64-ucrt-x86_64-dav1d
             mingw-w64-ucrt-x86_64-libvpl
             mingw-w64-ucrt-x86_64-amf-headers
             mingw-w64-ucrt-x86_64-ffnvcodec-headers
@@ -75,7 +76,7 @@ jobs:
       - name: Install the build tools and libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential nasm pkg-config git curl xz-utils zip \
+          sudo apt-get install -y build-essential nasm meson ninja-build pkg-config git curl xz-utils zip \
             libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxau-dev libxdmcp-dev libva-dev libdrm-dev xvfb
 
       - name: Build
