@@ -69,7 +69,7 @@ if [ "$PLATFORM" = windows ]; then
   # makes FFmpeg refuse to start the encoder, which is how a share would silently fall back to H.264.
   has_options av1_nvenc preset tune rc rc-lookahead forced-idr zerolatency   # (bf is one of FFmpeg's own options for every encoder, not listed in the encoder's help)
   has_options av1_amf usage quality rc async_depth forced_idr header_insertion_mode
-  has_options av1_qsv preset scenario async_depth forced_idr
+  has_options av1_qsv preset async_depth forced_idr   # (no scenario: only the H.264 and H.265 Quick Sync encoders have it)
 else
   # The screen grabber and the options Yaparr's command line uses with it.
   devices="$("$FF" -hide_banner -devices 2>&1)"
