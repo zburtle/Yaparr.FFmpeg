@@ -67,7 +67,7 @@ if [ "$PLATFORM" = windows ]; then
   done
   # The options Yaparr's command line gives the AV1 encoders (the app builds them in FfmpegArgs.AddEncoder); an option that is not there
   # makes FFmpeg refuse to start the encoder, which is how a share would silently fall back to H.264.
-  has_options av1_nvenc preset tune rc rc-lookahead bf forced-idr zerolatency
+  has_options av1_nvenc preset tune rc rc-lookahead forced-idr zerolatency   # (bf is one of FFmpeg's own options for every encoder, not listed in the encoder's help)
   has_options av1_amf usage quality rc async_depth forced_idr header_insertion_mode
   has_options av1_qsv preset scenario async_depth forced_idr
 else
@@ -78,7 +78,7 @@ else
   for opt in window_id draw_mouse video_size framerate; do has "$help" "$opt" && ok "x11grab option $opt" || fail "x11grab has no option $opt"; done
   line="$("$FF" -hide_banner -h encoder=h264_nvenc 2>&1 | grep 'Supported pixel formats')"
   has "$line" " yuv420p" && ok "h264_nvenc takes yuv420p" || fail "h264_nvenc does not take yuv420p ($line)"
-  has_options av1_nvenc preset tune rc rc-lookahead bf forced-idr zerolatency
+  has_options av1_nvenc preset tune rc rc-lookahead forced-idr zerolatency   # (bf is one of FFmpeg's own options for every encoder, not listed in the encoder's help)
   has_options av1_vaapi profile
   # Yaparr's command line also gives h264_vaapi -async_depth; if this FFmpeg has no such option the app has to stop passing it.
   has_options h264_vaapi profile async_depth
