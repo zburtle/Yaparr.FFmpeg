@@ -8,7 +8,7 @@
 #   FFMPEG_COMMIT   the FFmpeg commit to build (default: the one Yaparr is tested with, as for Windows)
 #   OUT             where the package goes (default: ./out)
 #
-# libvpx and the X11 libraries (libxcb and its helpers) are linked in. Two things are not, on purpose: the C library, and
+# libvpx, dav1d and the X11 libraries (libxcb and its helpers) are linked in. Two things are not, on purpose: the C library, and
 # libva, which finds the graphics driver for H.264 on Intel and AMD cards and has to be the one of the computer it runs on.
 # NVIDIA's encoder library is opened by FFmpeg when it runs, so it is not linked either.
 set -euo pipefail
@@ -24,6 +24,7 @@ TARGET="${1:-$native}"
 FFMPEG_COMMIT="${FFMPEG_COMMIT:-17a4a474f4013bfef4393abaca282078e24efc35}"
 NV_CODEC_HEADERS_TAG="${NV_CODEC_HEADERS_TAG:-n13.0.19.0}"
 LIBVPX_TAG="${LIBVPX_TAG:-v1.15.2}"
+DAV1D_TAG="${DAV1D_TAG:-1.5.1}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="${WORK:-$PWD/work}"
 OUT="${OUT:-$PWD/out}"
@@ -45,6 +46,10 @@ export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PAT
 # library and licence files are at hand.
 git clone --depth 1 --branch "$LIBVPX_TAG" https://github.com/webmproject/libvpx.git libvpx
 ( cd libvpx && ./configure --prefix="$PREFIX" --enable-static --disable-shared --enable-pic --enable-vp8 --disable-vp9     --disable-examples --disable-tools --disable-docs --disable-unit-tests >/dev/null && make -j"$(nproc)" >/dev/null && make install >/dev/null )
+
+# dav1d (BSD 2-clause), the AV1 decoder every viewer uses, built here for the same reasons (Ubuntu 22.04's own is too old for this FFmpeg).
+git clone --depth 1 --branch "$DAV1D_TAG" https://code.videolan.org/videolan/dav1d.git dav1d
+( cd dav1d && meson setup build --prefix="$PREFIX" --libdir=lib --default-library=static -Dbuildtype=release -Denable_tools=false -Denable_tests=false -Denable_examples=false >/dev/null && ninja -C build >/dev/null && ninja -C build install >/dev/null )
 
 # Link these libraries statically: the linker takes the first folder it is given that has the library, and this one only has the
 # static ones. (libva is not in it.)
@@ -72,6 +77,9 @@ cd src
 #   libvpx_vp8, vp8            VP8 in software: the encoder for computers without a usable graphics card, and the decoder
 #   h264_nvenc, h264_vaapi     H.264 on NVIDIA graphics cards, and on Intel and AMD ones through VA-API (the card does the work)
 #   h264 (decoder, parser)     every viewer decodes H.264 in software
+#   av1_nvenc, av1_vaapi       AV1 on NVIDIA graphics cards, and on Intel and AMD ones through VA-API (newer cards; the card does the work)
+#   libdav1d, av1 (parser), av1_metadata   every viewer decodes AV1 in software with dav1d; av1_metadata is what the IVF writer
+#                              uses to put a temporal delimiter in front of each picture
 #   ivf, h264 (demuxers/muxers), rawvideo, pipe   the pictures go in and out through standard input and output (rawvideo in:
 #                              the pictures GStreamer reads from the Wayland portal)
 #   xcbgrab (x11grab), hwupload, format, scale   copying an X11 screen or window, then the conversion of each picture
@@ -86,14 +94,14 @@ cd src
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
   --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
-  --enable-libvpx --enable-vaapi --enable-ffnvcodec --enable-nvenc \
-  --enable-encoder=libvpx_vp8,h264_nvenc,h264_vaapi,rawvideo \
-  --enable-decoder=vp8,h264,rawvideo,wrapped_avframe \
-  --enable-parser=h264,vp8 \
+  --enable-libvpx --enable-libdav1d --enable-vaapi --enable-ffnvcodec --enable-nvenc \
+  --enable-encoder=libvpx_vp8,h264_nvenc,h264_vaapi,av1_nvenc,av1_vaapi,rawvideo \
+  --enable-decoder=vp8,h264,libdav1d,rawvideo,wrapped_avframe \
+  --enable-parser=h264,vp8,av1 \
   --enable-demuxer=ivf,h264,rawvideo \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=xcbgrab,lavfi \
-  --enable-bsf=h264_mp4toannexb \
+  --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
   --enable-filter=scale,format,null,hwupload,color,testsrc2 \
   || { tail -n 80 ffbuild/config.log; exit 1; }
@@ -129,8 +137,9 @@ mkdir -p "$LICENSE_DIR/nv-codec-headers"
 cp "$WORK"/nv-codec-headers/README* "$LICENSE_DIR/nv-codec-headers/" 2>/dev/null || true
 [ -f "$WORK/nv-codec-headers/LICENSE" ] && cp "$WORK/nv-codec-headers/LICENSE" "$LICENSE_DIR/nv-codec-headers/"
 
-mkdir -p "$LICENSE_DIR/libvpx"
+mkdir -p "$LICENSE_DIR/libvpx" "$LICENSE_DIR/dav1d"
 cp "$WORK/libvpx/LICENSE" "$WORK/libvpx/PATENTS" "$LICENSE_DIR/libvpx/"
+cp "$WORK/dav1d/COPYING" "$LICENSE_DIR/dav1d/"
 find "$LICENSE_DIR" -type d -empty -delete
 
 # The packages and versions used, as they were on the build machine.
@@ -144,6 +153,7 @@ find "$LICENSE_DIR" -type d -empty -delete
   echo "Libraries and headers used:"
   echo "nv-codec-headers $NV_CODEC_HEADERS_TAG"
   echo "libvpx $LIBVPX_TAG (built from source)"
+  echo "dav1d $DAV1D_TAG (built from source)"
   for pkg in $PACKAGES; do dpkg-query -W -f='${Package} ${Version}\n' "$pkg" 2>/dev/null || true; done
   echo
   echo "Compiler: $(gcc --version | head -1)"
@@ -162,7 +172,7 @@ same release, and https://github.com/FFmpeg/FFmpeg/commit/${FFMPEG_COMMIT}.
 The way it was configured and built is in BUILD-INFO.txt here and in the source of the build scripts
 (https://github.com/zburtle/Yaparr.FFmpeg).
 
-Built in: libvpx (BSD licence, with Google's patent grant) and the X11 client libraries libxcb, libXau and libXdmcp (MIT
+Built in: libvpx (BSD licence, with Google's patent grant), dav1d (the AV1 decoder, BSD 2-clause licence) and the X11 client libraries libxcb, libXau and libXdmcp (MIT
 licence). The NVIDIA codec headers (MIT) only describe NVIDIA's encoder library, which is part of the graphics driver, and
 libva (MIT) is the computer's own. Their licences are in the licenses folder.
 

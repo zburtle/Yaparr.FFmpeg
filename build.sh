@@ -25,6 +25,9 @@ cd src
 #   libvpx_vp8, vp8            VP8 in software: the encoder for computers without a usable graphics card, and the decoder
 #   h264_nvenc, h264_amf, h264_qsv   H.264 on NVIDIA, AMD and Intel graphics cards (the card does the work)
 #   h264 (decoder, parser)     every viewer decodes H.264 in software
+#   av1_nvenc, av1_amf, av1_qsv   AV1 on NVIDIA, AMD and Intel graphics cards (RTX 40, RX 7000, Arc and newer; the card does the work)
+#   libdav1d, av1 (parser), av1_metadata   every viewer decodes AV1 in software with dav1d (BSD); av1_metadata is what the IVF writer
+#                              uses to put a temporal delimiter in front of each picture
 #   ivf, h264 (demuxers/muxers), rawvideo, pipe   the pictures go in and out through standard input and output
 #   gfxcapture, hwdownload, format, scale   Windows Graphics Capture, then the download and conversion of each picture
 #   lavfi, color, testsrc2, null, wrapped_avframe   only for Yaparr's tests and the checks in verify.sh
@@ -41,15 +44,15 @@ cd src
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
   --enable-d3d11va --enable-dxva2 \
-  --enable-libvpx --enable-libvpl --enable-amf --enable-ffnvcodec --enable-nvenc \
-  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,rawvideo \
-  --enable-decoder=vp8,h264,wrapped_avframe \
+  --enable-libvpx --enable-libdav1d --enable-libvpl --enable-amf --enable-ffnvcodec --enable-nvenc \
+  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo \
+  --enable-decoder=vp8,h264,libdav1d,wrapped_avframe \
   --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_dxva2 \
-  --enable-parser=h264,vp8 \
+  --enable-parser=h264,vp8,av1 \
   --enable-demuxer=ivf,h264 \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=lavfi \
-  --enable-bsf=h264_mp4toannexb \
+  --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
   --enable-filter=gfxcapture,hwdownload,format,scale,color,testsrc2 \
   || { tail -n 80 ffbuild/config.log; exit 1; }
@@ -68,7 +71,7 @@ cp COPYING.LGPLv2.1 "$OUT/$NAME/LICENSE.txt"
 # stops if there is still nothing.
 LICENSE_DIR="$OUT/$NAME/licenses"
 PKG_PREFIX="${MINGW_PACKAGE_PREFIX:-mingw-w64-ucrt-x86_64}"
-for pkg in libvpx libvpl amf-headers ffnvcodec-headers gcc-libs libwinpthread winpthreads crt headers; do
+for pkg in libvpx dav1d libvpl amf-headers ffnvcodec-headers gcc-libs libwinpthread winpthreads crt headers; do
   pacman -Qi "$PKG_PREFIX-$pkg" >/dev/null 2>&1 || continue
   mkdir -p "$LICENSE_DIR/$pkg"
   pacman -Ql "$PKG_PREFIX-$pkg" | awk '{print $2}' | grep -E '/share/(licenses|doc)/.*[^/]$' | grep -i -E 'licen[cs]e|copying|copyright|notice|patents' |
@@ -82,12 +85,17 @@ if [ -z "$(ls -A "$LICENSE_DIR/libvpx" 2>/dev/null)" ]; then
   fetch "https://raw.githubusercontent.com/webmproject/libvpx/v$version/LICENSE" "$LICENSE_DIR/libvpx/LICENSE"
   fetch "https://raw.githubusercontent.com/webmproject/libvpx/v$version/PATENTS" "$LICENSE_DIR/libvpx/PATENTS"
 fi
+if [ -z "$(ls -A "$LICENSE_DIR/dav1d" 2>/dev/null)" ]; then
+  mkdir -p "$LICENSE_DIR/dav1d"
+  version="$(pacman -Q "$PKG_PREFIX-dav1d" | awk '{print $2}' | sed 's/-[0-9]*$//')"
+  fetch "https://raw.githubusercontent.com/videolan/dav1d/$version/COPYING" "$LICENSE_DIR/dav1d/COPYING"
+fi
 if [ -z "$(ls -A "$LICENSE_DIR/gcc-libs" 2>/dev/null)" ]; then
   mkdir -p "$LICENSE_DIR/gcc-libs"
   fetch "https://raw.githubusercontent.com/gcc-mirror/gcc/master/COPYING.RUNTIME" "$LICENSE_DIR/gcc-libs/COPYING.RUNTIME"
   fetch "https://raw.githubusercontent.com/gcc-mirror/gcc/master/COPYING3" "$LICENSE_DIR/gcc-libs/COPYING3"
 fi
-for required in libvpx gcc-libs; do
+for required in libvpx dav1d gcc-libs; do
   [ -n "$(ls -A "$LICENSE_DIR/$required" 2>/dev/null)" ] || { echo "no licence text for $required"; exit 1; }
 done
 find "$LICENSE_DIR" -type d -empty -delete
@@ -105,7 +113,7 @@ done
   echo "configure: $CONFIGURE_LINE"
   echo
   echo "Libraries and headers used:"
-  for pkg in libvpx libvpl amf-headers ffnvcodec-headers gcc-libs libwinpthread winpthreads crt headers; do pacman -Q "$PKG_PREFIX-$pkg" 2>/dev/null || true; done
+  for pkg in libvpx dav1d libvpl amf-headers ffnvcodec-headers gcc-libs libwinpthread winpthreads crt headers; do pacman -Q "$PKG_PREFIX-$pkg" 2>/dev/null || true; done
   [ -z "$NO_LICENSE_TEXT" ] || echo "Packages that carry no licence files of their own: $NO_LICENSE_TEXT"
   echo
   echo "Compiler: $(gcc --version | head -1)"
@@ -123,7 +131,7 @@ same release, and https://github.com/FFmpeg/FFmpeg/commit/${FFMPEG_COMMIT}.
 The way it was configured and built is in BUILD-INFO.txt here and in the source of the build scripts
 (https://github.com/zburtle/Yaparr.FFmpeg).
 
-Built in: libvpx (BSD licence, with Google's patent grant). The AMF, NVIDIA codec and oneVPL headers are used to talk to the
+Built in: libvpx (BSD licence, with Google's patent grant) and dav1d, the AV1 decoder (BSD 2-clause licence). The AMF, NVIDIA codec and oneVPL headers are used to talk to the
 graphics driver, which is not part of this package. Their licences are in the licenses folder.
 
 FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project. Yaparr is not endorsed by the FFmpeg project.

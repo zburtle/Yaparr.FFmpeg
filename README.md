@@ -6,6 +6,8 @@
 
 | For | Parts |
 |---|---|
+| AV1 on the graphics card | `av1_nvenc` (NVIDIA RTX 40 and newer), `av1_amf` (AMD RX 7000 and newer), `av1_qsv` (Intel Arc and newer); on Linux `av1_nvenc` and `av1_vaapi` |
+| Viewing AV1 | `libdav1d` (dav1d, BSD 2-clause, built in), the `av1` parser and the `av1_metadata` filter that the IVF writer uses |
 | VP8 in software | `libvpx` (encoder), `vp8` (decoder), the IVF container |
 | H.264 on the graphics card | `h264_nvenc` (NVIDIA), `h264_amf` (AMD), `h264_qsv` (Intel) |
 | Viewing H.264 | the `h264` decoder and parser, and the `h264_d3d11va`, `h264_d3d11va2` and `h264_dxva2` hardware decoders (used only when the viewer is asked to decode on the graphics card) |
