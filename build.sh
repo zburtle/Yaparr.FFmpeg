@@ -25,6 +25,8 @@ cd src
 #   libvpx_vp8, vp8            VP8 in software: the encoder for computers without a usable graphics card, and the decoder
 #   h264_nvenc, h264_amf, h264_qsv   H.264 on NVIDIA, AMD and Intel graphics cards (the card does the work)
 #   h264 (decoder, parser)     every viewer decodes H.264 in software
+#   h264_d3d11va, h264_d3d12va, h264_dxva2, scale_d3d12   H.264 decoding on the graphics card, when the app is asked to; the preview of a share
+#                              also scales on the card (scale_d3d12), so that only the small picture is copied back to memory
 #   av1_nvenc, av1_amf, av1_qsv   AV1 on NVIDIA, AMD and Intel graphics cards (RTX 40, RX 7000, Arc and newer; the card does the work)
 #   libdav1d, av1 (parser), av1_metadata   every viewer decodes AV1 in software with dav1d (BSD); av1_metadata is what the IVF writer
 #                              uses to put a temporal delimiter in front of each picture
@@ -43,18 +45,18 @@ cd src
   --disable-shared --enable-static \
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
-  --enable-d3d11va --enable-dxva2 \
+  --enable-d3d11va --enable-d3d12va --enable-dxva2 \
   --enable-libvpx --enable-libdav1d --enable-libvpl --enable-amf --enable-ffnvcodec --enable-nvenc \
   --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo \
   --enable-decoder=vp8,h264,libdav1d,wrapped_avframe \
-  --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_dxva2 \
+  --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_d3d12va,h264_dxva2 \
   --enable-parser=h264,vp8,av1 \
   --enable-demuxer=ivf,h264 \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=lavfi \
   --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
-  --enable-filter=gfxcapture,hwdownload,format,scale,color,testsrc2 \
+  --enable-filter=gfxcapture,hwdownload,format,scale,scale_d3d12,color,testsrc2 \
   || { tail -n 80 ffbuild/config.log; exit 1; }
 
 make -j"$(nproc)"
