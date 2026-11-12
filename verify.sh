@@ -35,7 +35,7 @@ decoders="$("$FF" -hide_banner -decoders 2>&1)"
 filters="$("$FF" -hide_banner -filters 2>&1)"
 if [ "$PLATFORM" = windows ]; then
   wanted_encoders="libvpx h264_nvenc h264_amf h264_qsv av1_nvenc av1_amf av1_qsv rawvideo"
-  wanted_filters="gfxcapture hwdownload format scale"
+  wanted_filters="gfxcapture hwdownload format scale scale_d3d12"
   wanted_decoders="vp8 h264 libdav1d"
 else
   wanted_encoders="libvpx h264_nvenc h264_vaapi av1_nvenc av1_vaapi rawvideo"
@@ -53,6 +53,13 @@ if [ "$PLATFORM" = windows ]; then
   # The gfxcapture options Yaparr's command line uses (the build must have the October 2026 fixes, dup_frames among them).
   help="$("$FF" -hide_banner -h filter=gfxcapture 2>&1)"
   for opt in hwnd hmonitor max_framerate capture_cursor resize_mode dup_frames; do has "$help" "$opt" && ok "gfxcapture option $opt" || fail "gfxcapture has no option $opt"; done
+
+  # Decoding on the graphics card through Direct3D 11 and 12, and scaling there: the preview of a share decodes with d3d12va, scales with
+  # scale_d3d12 and copies only the small picture back (the app falls back to d3d11va, then to software, where there is no D3D12).
+  hwaccels="$("$FF" -hide_banner -hwaccels 2>&1)"
+  for a in d3d11va d3d12va; do grep -q -x -- "$a" <<<"$hwaccels" && ok "hwaccel $a" || fail "hwaccel $a is missing"; done
+  help="$("$FF" -hide_banner -h filter=scale_d3d12 2>&1)"
+  for opt in " w " " h " format; do has "$help" "$opt" && ok "scale_d3d12 option$opt" || fail "scale_d3d12 has no option$opt"; done
 
   # The encoders take the picture formats Yaparr gives them.
   for pair in "h264_qsv nv12" "h264_amf yuv420p" "h264_nvenc yuv420p"; do
@@ -125,7 +132,7 @@ else
   if command -v objdump >/dev/null; then
     deps="$(objdump -p "$FF" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
     echo "DLLs it loads: $(echo $deps)"
-    odd="$(echo "$deps" | grep -v -E '^(kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
+    odd="$(echo "$deps" | grep -v -E '^(kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
     [ -z "$odd" ] && ok "only system DLLs" || fail "unexpected DLLs: $odd"
   fi
 fi

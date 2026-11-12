@@ -10,7 +10,7 @@
 | Viewing AV1 | `libdav1d` (dav1d, BSD 2-clause, built in), the `av1` parser and the `av1_metadata` filter that the IVF writer uses |
 | VP8 in software | `libvpx` (encoder), `vp8` (decoder), the IVF container |
 | H.264 on the graphics card | `h264_nvenc` (NVIDIA), `h264_amf` (AMD), `h264_qsv` (Intel) |
-| Viewing H.264 | the `h264` decoder and parser, and the `h264_d3d11va`, `h264_d3d11va2` and `h264_dxva2` hardware decoders (used only when the viewer is asked to decode on the graphics card) |
+| Viewing H.264 | the `h264` decoder and parser, and the `h264_d3d11va`, `h264_d3d11va2`, `h264_d3d12va` and `h264_dxva2` hardware decoders (used only when the viewer or the preview of a share is asked to decode on the graphics card), and the `scale_d3d12` filter (the preview scales on the card, so that only the small picture is copied back) |
 | Capture | Windows: the `gfxcapture` filter (Windows Graphics Capture), `hwdownload`, `format`, `scale`. Linux: `x11grab`, `hwupload`, `format`, `scale` |
 | Linux H.264 on the graphics card | `h264_nvenc` (NVIDIA) and `h264_vaapi` (Intel and AMD, through VA-API) instead of the three Windows ones |
 | Input and output | the `pipe` protocol, raw pictures (on Linux also as input: the Wayland pictures GStreamer reads), the raw H.264 stream |
