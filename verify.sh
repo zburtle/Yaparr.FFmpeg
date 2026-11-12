@@ -138,9 +138,16 @@ else
     for file in "$bindir"/*.exe "$bindir"/*.dll; do
       deps="$(objdump -p "$file" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
       echo "$(basename "$file") loads: $(echo $deps)"
-      odd="$(echo "$deps" | grep -v -E '^((av(codec|filter|format|device|util)|sw(scale|resample))-[0-9]+|kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
-      [ -z "$odd" ] && ok "$(basename "$file"): only system DLLs and FFmpeg's own" || fail "$(basename "$file"): unexpected DLLs: $odd"
+      odd="$(echo "$deps" | grep -v -E '^((av(codec|filter|format|device|util)|sw(scale|resample))-[0-9]+|libdav1d-[0-9]+|libvpl-[0-9]+|libwinpthread-[0-9]+|kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
+      [ -z "$odd" ] && ok "$(basename "$file"): only system DLLs, FFmpeg's own and the ones shipped with them" || fail "$(basename "$file"): unexpected DLLs: $odd"
+      # Whatever it names has to be next to it (dav1d, the oneVPL dispatcher and winpthreads are shipped; nothing else may be needed).
+      for dep in $(echo "$deps" | grep -E '^(libdav1d|libvpl|libwinpthread)-'); do
+        [ -e "$bindir/$dep" ] && ok "$(basename "$file") needs $dep, which is shipped" || fail "$(basename "$file") needs $dep, which is not next to it"
+      done
     done
+    # No two copies of one library (the build leaves unversioned ones that nothing asks for).
+    dup="$(cd "$bindir" && ls *.dll | grep -E '^(avcodec|avfilter|avformat|avdevice|avutil|swscale|swresample)\.dll$' || true)"
+    [ -z "$dup" ] && ok "no unversioned copies of the libraries" || fail "unversioned copies of libraries: $dup"
   fi
 fi
 

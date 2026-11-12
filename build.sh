@@ -67,7 +67,20 @@ make -j"$(nproc)"
 # same ones from the same folder.
 VERSION="$(./ffbuild/version.sh .)"
 cp ffmpeg.exe "$OUT/$NAME/bin/ffmpeg.exe"
-for dll in lib*/*.dll; do cp "$dll" "$OUT/$NAME/bin/"; done
+# (only the DLLs with their version in the name, which are the ones the program and the app ask for; the build also leaves copies without it)
+for dll in lib*/*-[0-9]*.dll; do cp "$dll" "$OUT/$NAME/bin/"; done
+# What the libraries need that Windows does not have: dav1d, the oneVPL dispatcher and winpthreads, as DLLs of MSYS2's, shipped next to them (their
+# licences, and the compiler runtime's, are collected below). Found by what the program and each DLL import, again for what those need in turn.
+more=1
+while [ "$more" = 1 ]; do
+  more=0
+  for file in "$OUT/$NAME/bin/"*.exe "$OUT/$NAME/bin/"*.dll; do
+    for dep in $(objdump -p "$file" | awk '/DLL Name/ {print $3}'); do
+      [ -e "$OUT/$NAME/bin/$dep" ] && continue
+      if [ -e "$MSYSTEM_PREFIX/bin/$dep" ]; then cp "$MSYSTEM_PREFIX/bin/$dep" "$OUT/$NAME/bin/$dep"; echo "also shipped: $dep (needed by $(basename "$file"))"; more=1; fi
+    done
+  done
+done
 strip "$OUT/$NAME/bin/"*.exe "$OUT/$NAME/bin/"*.dll
 ls -l "$OUT/$NAME/bin"
 CONFIGURE_LINE="$(grep -m1 '^configuration:' <("$OUT/$NAME/bin/ffmpeg.exe" -hide_banner -version) | sed 's/^configuration: //')"
