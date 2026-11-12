@@ -69,8 +69,8 @@ VERSION="$(./ffbuild/version.sh .)"
 cp ffmpeg.exe "$OUT/$NAME/bin/ffmpeg.exe"
 # (only the DLLs with their version in the name, which are the ones the program and the app ask for; the build also leaves copies without it)
 for dll in lib*/*-[0-9]*.dll; do cp "$dll" "$OUT/$NAME/bin/"; done
-# What the libraries need that Windows does not have: dav1d, the oneVPL dispatcher and winpthreads, as DLLs of MSYS2's, shipped next to them (their
-# licences, and the compiler runtime's, are collected below). Found by what the program and each DLL import, again for what those need in turn.
+# What the libraries need that Windows does not have: dav1d, libvpx, the oneVPL dispatcher, winpthreads and the compiler's runtime, as DLLs of MSYS2's, shipped
+# next to them (their licences are collected below). Found by what the program and each DLL import, again for what those need in turn.
 more=1
 while [ "$more" = 1 ]; do
   more=0
