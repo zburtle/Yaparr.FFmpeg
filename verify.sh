@@ -128,12 +128,26 @@ if [ "$PLATFORM" = linux ]; then
   newest="$(objdump -T "$FF" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)"
   [ -n "$newest" ] && [ "$(printf '%s\n2.35\n' "$newest" | sort -V | tail -1)" = "2.35" ] && ok "needs glibc $newest or newer" || fail "needs glibc $newest, newer than 2.35"
 else
-  # What it needs from Windows: only system libraries, nothing that would have to be shipped with it.
+  # What the program and its libraries need from Windows: only system libraries and each other, nothing that would have to be shipped with
+  # them. The libraries are shared (the DLLs next to the program), and each is checked on its own.
+  bindir="$(dirname "$FF")"
+  for lib in avcodec avfilter avformat avdevice avutil swscale swresample; do
+    ls "$bindir"/$lib-*.dll >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing next to the program"
+  done
   if command -v objdump >/dev/null; then
-    deps="$(objdump -p "$FF" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
-    echo "DLLs it loads: $(echo $deps)"
-    odd="$(echo "$deps" | grep -v -E '^(kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
-    [ -z "$odd" ] && ok "only system DLLs" || fail "unexpected DLLs: $odd"
+    for file in "$bindir"/*.exe "$bindir"/*.dll; do
+      deps="$(objdump -p "$file" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
+      echo "$(basename "$file") loads: $(echo $deps)"
+      odd="$(echo "$deps" | grep -v -E '^((av(codec|filter|format|device|util)|sw(scale|resample))-[0-9]+|libdav1d-[0-9]+|libvpx-[0-9]+|libvpl-[0-9]+|libwinpthread-[0-9]+|libgcc_s_seh-[0-9]+|libstdc\+\+-[0-9]+|kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
+      [ -z "$odd" ] && ok "$(basename "$file"): only system DLLs, FFmpeg's own and the ones shipped with them" || fail "$(basename "$file"): unexpected DLLs: $odd"
+      # Whatever it names has to be next to it (dav1d, libvpx, the oneVPL dispatcher, winpthreads and the compiler's runtime are shipped; nothing else may be needed).
+      for dep in $(echo "$deps" | grep -E '^(libdav1d|libvpx|libvpl|libwinpthread|libgcc_s_seh|libstdc\+\+)-'); do
+        [ -e "$bindir/$dep" ] && ok "$(basename "$file") needs $dep, which is shipped" || fail "$(basename "$file") needs $dep, which is not next to it"
+      done
+    done
+    # No two copies of one library (the build leaves unversioned ones that nothing asks for).
+    dup="$(cd "$bindir" && ls *.dll | grep -E '^(avcodec|avfilter|avformat|avdevice|avutil|swscale|swresample)\.dll$' || true)"
+    [ -z "$dup" ] && ok "no unversioned copies of the libraries" || fail "unversioned copies of libraries: $dup"
   fi
 fi
 

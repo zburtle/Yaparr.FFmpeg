@@ -1,6 +1,6 @@
 # Yaparr.FFmpeg
 
-[Yaparr](https://github.com/zburtle/Yaparr) shares and shows screens by running FFmpeg as a separate program (see `src/Yaparr.Screen` there). This repository builds that FFmpeg with only the parts Yaparr uses, under the LGPL: a static `ffmpeg.exe` for Windows x64, and an `ffmpeg` for Linux x64 and arm64.
+[Yaparr](https://github.com/zburtle/Yaparr) shares and shows screens by running FFmpeg as a separate program (see `src/Yaparr.Screen` there). This repository builds that FFmpeg with only the parts Yaparr uses, under the LGPL: for Windows x64 an `ffmpeg.exe` with FFmpeg's libraries (DLLs) next to it, which Yaparr also loads into itself to share a screen without a separate program, and an `ffmpeg` for Linux x64 and arm64.
 
 ## What is in it
 
@@ -24,7 +24,7 @@ The `Build` workflow (`.github/workflows/build.yml`) runs `build.sh` in MSYS2 on
 
 To publish a build, run the workflow by hand and give it a release tag such as `ffmpeg-4`. That creates a release holding:
 
-- `ffmpeg-yaparr-g<commit>-win64.zip`: `bin/ffmpeg.exe`, `LICENSE.txt` (LGPL 2.1), `SOURCE.txt`, `BUILD-INFO.txt` (how it was configured, the versions of what was used) and `licenses/` (libvpx, oneVPL, AMF and NVIDIA headers, the compiler runtime);
+- `ffmpeg-yaparr-g<commit>-win64.zip`: `bin/ffmpeg.exe` and the libraries `bin/avcodec-*.dll`, `avfilter`, `avformat`, `avdevice`, `avutil`, `swscale` and `swresample`, `LICENSE.txt` (LGPL 2.1), `SOURCE.txt`, `BUILD-INFO.txt` (how it was configured, the versions of what was used) and `licenses/` (libvpx, oneVPL, AMF and NVIDIA headers, the compiler runtime);
 - `ffmpeg-g<commit>-source.tar.xz`: the exact FFmpeg source it was built from;
 - `ffmpeg-yaparr-g<commit>-linux-x64.zip` and `-linux-arm64.zip`: `bin/ffmpeg` and the same notices (`LICENSE.txt`, `SOURCE.txt`, `BUILD-INFO.txt`, `licenses/`: libvpx, the X11 client libraries, the NVIDIA codec headers, libva);
 - `SHA256SUMS.txt`.
