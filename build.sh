@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Builds the FFmpeg that Yaparr runs to share and show screens: only the parts Yaparr uses, under the LGPL, in one static
-# ffmpeg.exe for Windows x64. Run it in an MSYS2 UCRT64 shell (the workflow does); see README.md in this folder.
+# Builds the FFmpeg that Yaparr runs to share and show screens: only the parts Yaparr uses, under the LGPL, for Windows x64: an
+# ffmpeg.exe and FFmpeg's libraries (DLLs) next to it. Yaparr runs the exe as a program for some things, and loads the same DLLs into
+# itself for sharing a screen, so they are shared libraries, which anyone can replace (that is what the LGPL asks of a program that
+# links to it). Run it in an MSYS2 UCRT64 shell (the workflow does); see README.md in this folder.
 #
 #   FFMPEG_COMMIT   the FFmpeg commit to build (default: the one Yaparr is tested with)
 #   OUT             where the package goes (default: ./out)
@@ -39,10 +41,10 @@ cd src
   --prefix="$WORK/prefix" \
   --arch=x86_64 --target-os=mingw32 \
   --pkg-config-flags=--static \
-  --extra-ldflags="-static -static-libgcc -static-libstdc++" \
+  --extra-ldflags="-static-libgcc -static-libstdc++" \
   --extra-libs="-lstdc++" \
   --disable-everything --disable-autodetect \
-  --disable-shared --enable-static \
+  --enable-shared --disable-static --disable-pthreads --enable-w32threads \
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
   --enable-d3d11va --enable-d3d12va --enable-dxva2 \
@@ -61,13 +63,17 @@ cd src
 
 make -j"$(nproc)"
 
+# The program and its libraries, side by side: Windows looks for a DLL in the folder of the program that needs it, and Yaparr loads the
+# same ones from the same folder.
 VERSION="$(./ffbuild/version.sh .)"
-CONFIGURE_LINE="$(grep -m1 '^configuration:' <(./ffmpeg.exe -hide_banner -version) | sed 's/^configuration: //')"
 cp ffmpeg.exe "$OUT/$NAME/bin/ffmpeg.exe"
-strip "$OUT/$NAME/bin/ffmpeg.exe"
+for dll in lib*/*.dll; do cp "$dll" "$OUT/$NAME/bin/"; done
+strip "$OUT/$NAME/bin/"*.exe "$OUT/$NAME/bin/"*.dll
+ls -l "$OUT/$NAME/bin"
+CONFIGURE_LINE="$(grep -m1 '^configuration:' <("$OUT/$NAME/bin/ffmpeg.exe" -hide_banner -version) | sed 's/^configuration: //')"
 cp COPYING.LGPLv2.1 "$OUT/$NAME/LICENSE.txt"
 
-# The licences of what was built in: the packages whose code (or headers) ended up in ffmpeg.exe. Each package's licence files
+# The licences of what was built in: the packages whose code (or headers) ended up in ffmpeg.exe and the libraries. Each package's licence files
 # are found through its file list. libvpx (BSD, with Google's patent grant) and the compiler runtime (GPL with the GCC runtime
 # exception) must come with the binary: if a package carries no licence files they are fetched from upstream, and the build
 # stops if there is still nothing.
@@ -125,8 +131,11 @@ cat > "$OUT/$NAME/SOURCE.txt" <<EOF
 This is a build of FFmpeg, made for Yaparr (https://github.com/zburtle/Yaparr), with only the parts Yaparr uses.
 
 FFmpeg is licensed under the GNU Lesser General Public License, version 2.1 or later (LICENSE.txt). It is not built with any
-GPL or "nonfree" part. Yaparr runs it as a separate program and does not link to it, so it can be replaced: set YAPARR_FFMPEG
-to another ffmpeg.exe, or put one in an "ffmpeg" folder next to Yaparr.
+GPL or "nonfree" part. The libraries are the DLLs next to ffmpeg.exe (avcodec, avfilter, avformat, avdevice, avutil, swscale and
+swresample, each with its version in its name). Yaparr runs ffmpeg.exe as a program and also loads the libraries into itself;
+they are shared libraries, kept apart from Yaparr's own program on purpose, so that they can be replaced: put DLLs of the same
+versions, built from the source of this release or from another FFmpeg, in the same folder (an "ffmpeg" folder next to Yaparr,
+or the folder YAPARR_FFMPEG_LIBS names for the libraries; YAPARR_FFMPEG names another ffmpeg.exe).
 
 The source code of this build, the exact commit of FFmpeg that was built, is the file ffmpeg-g${SHORT}-source.tar.xz in the
 same release, and https://github.com/FFmpeg/FFmpeg/commit/${FFMPEG_COMMIT}.

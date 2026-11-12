@@ -128,12 +128,19 @@ if [ "$PLATFORM" = linux ]; then
   newest="$(objdump -T "$FF" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)"
   [ -n "$newest" ] && [ "$(printf '%s\n2.35\n' "$newest" | sort -V | tail -1)" = "2.35" ] && ok "needs glibc $newest or newer" || fail "needs glibc $newest, newer than 2.35"
 else
-  # What it needs from Windows: only system libraries, nothing that would have to be shipped with it.
+  # What the program and its libraries need from Windows: only system libraries and each other, nothing that would have to be shipped with
+  # them. The libraries are shared (the DLLs next to the program), and each is checked on its own.
+  bindir="$(dirname "$FF")"
+  for lib in avcodec avfilter avformat avdevice avutil swscale swresample; do
+    ls "$bindir"/$lib-*.dll >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing next to the program"
+  done
   if command -v objdump >/dev/null; then
-    deps="$(objdump -p "$FF" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
-    echo "DLLs it loads: $(echo $deps)"
-    odd="$(echo "$deps" | grep -v -E '^(kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
-    [ -z "$odd" ] && ok "only system DLLs" || fail "unexpected DLLs: $odd"
+    for file in "$bindir"/*.exe "$bindir"/*.dll; do
+      deps="$(objdump -p "$file" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
+      echo "$(basename "$file") loads: $(echo $deps)"
+      odd="$(echo "$deps" | grep -v -E '^((av(codec|filter|format|device|util)|sw(scale|resample))-[0-9]+|kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
+      [ -z "$odd" ] && ok "$(basename "$file"): only system DLLs and FFmpeg's own" || fail "$(basename "$file"): unexpected DLLs: $odd"
+    done
   fi
 fi
 
