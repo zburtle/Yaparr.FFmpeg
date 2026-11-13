@@ -77,7 +77,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential nasm meson ninja-build pkg-config git curl xz-utils zip \
-            libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxau-dev libxdmcp-dev libva-dev libdrm-dev xvfb
+            libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxau-dev libxdmcp-dev libva-dev libdrm-dev xvfb patchelf
 
       - name: Build
         env:
@@ -128,7 +128,7 @@ jobs:
           FFmpeg built for Yaparr (https://github.com/zburtle/Yaparr) with only the parts Yaparr uses (LGPL). Yaparr downloads this when it needs to share or show a screen.
 
           - \`$name.zip\`: Windows x64, static. \`bin/ffmpeg.exe\`, the licence, \`SOURCE.txt\`, \`BUILD-INFO.txt\` (how it was configured) and the licences of what is built in.
-          - \`ffmpeg-yaparr-g*-linux-x64.zip\` and \`-linux-arm64.zip\`: Linux (glibc 2.35 or newer; VA-API is the computer's own). \`bin/ffmpeg\` and the same notices.
+          - \`ffmpeg-yaparr-g*-linux-x64.zip\` and \`-linux-arm64.zip\`: Linux (glibc 2.35 or newer; VA-API is the computer's own). \`bin/ffmpeg\`, its shared libraries next to it (\`libavcodec.so.63\` and the others, which Yaparr loads into itself) and the same notices.
           - \`ffmpeg-*-source.tar.xz\`: the exact FFmpeg source this was built from.
           - Built by https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} at commit ${GITHUB_SHA}.
 
