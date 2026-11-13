@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds the FFmpeg that Yaparr runs to share and show screens on Linux: only the parts Yaparr uses, under the LGPL, in one
-# ffmpeg program for Linux x86-64 or arm64. Run it on a Debian or Ubuntu machine (the workflow does, on Ubuntu 22.04, so the
+# Builds the FFmpeg that Yaparr uses to share and show screens on Linux: only the parts Yaparr uses, under the LGPL, as shared libraries
+# (libavcodec.so and the others) with an ffmpeg program that uses them, next to each other, for Linux x86-64 or arm64. Yaparr loads the
+# libraries into itself to encode and still runs the program to capture a screen. Run it on a Debian or Ubuntu machine (the workflow does, on Ubuntu 22.04, so the
 # program runs on any system with glibc 2.35 or newer); see README.md in this folder.
 #
 #   build-linux.sh [x64|arm64]   which machine to build for; it has to be this machine (default: this machine's)
@@ -90,7 +91,7 @@ cd src
   --pkg-config-flags=--static \
   --extra-ldflags="-L$STATIC" \
   --disable-everything --disable-autodetect \
-  --disable-shared --enable-static \
+  --enable-shared --disable-static \
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
   --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
@@ -108,10 +109,23 @@ cd src
 
 make -j"$(nproc)"
 
+# The program finds its libraries next to itself once it is packaged; in the build folder they are each in their own folder.
+export LD_LIBRARY_PATH="$(for l in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do printf '%s:' "$PWD/$l"; done)${LD_LIBRARY_PATH:-}"
+
 VERSION="$(./ffbuild/version.sh .)"
 CONFIGURE_LINE="$(grep -m1 '^configuration:' <(./ffmpeg -hide_banner -version) | sed 's/^configuration: //')"
 cp ffmpeg "$OUT/$NAME/bin/ffmpeg"
-strip "$OUT/$NAME/bin/ffmpeg"
+# The libraries go next to the program (its rpath is its own folder), each as one file under the name it is loaded by (libavcodec.so.63): a zip
+# keeps no links, and one file per library is a third of the size of the real file and its two names.
+for lib in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do
+  soname="$(readelf -d "$lib/$lib.so" | sed -n 's/.*SONAME.*\[\(.*\)\].*/\1/p')"
+  [ -n "$soname" ] || { echo "no soname for $lib"; exit 1; }
+  cp -L "$lib/$soname" "$OUT/$NAME/bin/$soname"
+done
+strip --strip-unneeded "$OUT/$NAME/bin/ffmpeg" "$OUT/$NAME/bin"/lib*.so.*
+# Each file looks for the libraries it needs in its own folder. (Asking the linker for this at configure time does not survive configure and make, which each
+# expand the dollar sign, so it is set on the finished files.)
+patchelf --set-rpath '$ORIGIN' "$OUT/$NAME/bin/ffmpeg" "$OUT/$NAME/bin"/lib*.so.*
 chmod 755 "$OUT/$NAME/bin/ffmpeg"
 cp COPYING.LGPLv2.1 "$OUT/$NAME/LICENSE.txt"
 
@@ -164,8 +178,9 @@ cat > "$OUT/$NAME/SOURCE.txt" <<EOF
 This is a build of FFmpeg, made for Yaparr (https://github.com/zburtle/Yaparr), with only the parts Yaparr uses.
 
 FFmpeg is licensed under the GNU Lesser General Public License, version 2.1 or later (LICENSE.txt). It is not built with any
-GPL or "nonfree" part. Yaparr runs it as a separate program and does not link to it, so it can be replaced: set YAPARR_FFMPEG
-to another ffmpeg, or put one in an "ffmpeg" folder next to Yaparr.
+GPL or "nonfree" part. The parts of FFmpeg are shared libraries (the .so files next to the program), which Yaparr loads into itself
+and the program loads too; they are kept apart from Yaparr so that they can be replaced with a build of your own: put your libraries
+in the same place, or set YAPARR_FFMPEG_LIBS to the folder that has them (and YAPARR_FFMPEG to another ffmpeg program).
 
 The source code of this build, the exact commit of FFmpeg that was built, is the file ffmpeg-g${SHORT}-source.tar.xz in the
 same release, and https://github.com/FFmpeg/FFmpeg/commit/${FFMPEG_COMMIT}.

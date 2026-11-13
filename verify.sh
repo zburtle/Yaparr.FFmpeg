@@ -118,15 +118,29 @@ if [ "$PLATFORM" = linux ]; then
     echo "skip  x11grab capture (no DISPLAY)"
   fi
 
-  # What it needs from the system: the C library and VA-API only. libva has to be the computer's own (it finds the graphics driver),
-  # and the C library is not shipped with it; everything else is linked in. The C library's symbols must not be newer than the
-  # ones of the oldest system it is meant for (Ubuntu 22.04: glibc 2.35).
-  deps="$(ldd "$FF" | awk '{print $1}' | grep -v '^linux-vdso' | sort -u)"
-  echo "libraries it loads: $(echo $deps)"
-  odd="$(echo "$deps" | grep -v -E '^(/lib64/ld-linux-x86-64\.so\.2|/lib/ld-linux-aarch64\.so\.1|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|librt\.so\.1|libva\.so\.2|libva-drm\.so\.2|libdrm\.so\.2|libgcc_s\.so\.1)$' || true)"
-  [ -z "$odd" ] && ok "only the C library and VA-API" || fail "unexpected libraries: $odd"
-  newest="$(objdump -T "$FF" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)"
-  [ -n "$newest" ] && [ "$(printf '%s\n2.35\n' "$newest" | sort -V | tail -1)" = "2.35" ] && ok "needs glibc $newest or newer" || fail "needs glibc $newest, newer than 2.35"
+  # The libraries are shared (the .so files next to the program, each under the name it is loaded by), and each must find the others next to itself
+  # (its runpath is $ORIGIN), because Yaparr loads them into itself by their full paths.
+  bindir="$(dirname "$FF")"
+  for lib in avcodec avfilter avformat avdevice avutil swscale swresample; do
+    ls "$bindir"/lib$lib.so.[0-9]* >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing next to the program"
+  done
+  # What the program and its libraries need from the system: the C library and VA-API only (and each other). libva has to be the computer's
+  # own (it finds the graphics driver), and the C library is not shipped with it; everything else is linked in. The C library's symbols must
+  # not be newer than the ones of the oldest system it is meant for (Ubuntu 22.04: glibc 2.35).
+  for file in "$FF" "$bindir"/lib*.so.*; do
+    runpath="$(readelf -d "$file" | sed -n 's/.*R\(UN\)\{0,1\}PATH.*\[\(.*\)\].*/\2/p')"
+    [ "$runpath" = '$ORIGIN' ] && ok "$(basename "$file") looks for libraries next to itself" || fail "$(basename "$file") has runpath '$runpath', not \$ORIGIN"
+    deps="$(ldd "$file" | awk '{print $1}' | grep -v '^linux-vdso' | sort -u)"
+    echo "$(basename "$file") loads: $(echo $deps)"
+    odd="$(echo "$deps" | grep -v -E '^(/lib64/ld-linux-x86-64\.so\.2|/lib/ld-linux-aarch64\.so\.1|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|librt\.so\.1|libva\.so\.2|libva-drm\.so\.2|libdrm\.so\.2|libgcc_s\.so\.1|lib(avcodec|avfilter|avformat|avdevice|avutil|swscale|swresample)\.so\.[0-9]+)$' || true)"
+    [ -z "$odd" ] && ok "$(basename "$file"): only the C library, VA-API and the other libraries" || fail "$(basename "$file"): unexpected libraries: $odd"
+    newest="$(objdump -T "$file" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)"
+    [ -z "$newest" ] || [ "$(printf '%s\n2.35\n' "$newest" | sort -V | tail -1)" = "2.35" ] && ok "$(basename "$file") needs glibc ${newest:-nothing} or newer" || fail "$(basename "$file") needs glibc $newest, newer than 2.35"
+  done
+  # The encoders Yaparr loads into itself are in the library, not only in the program.
+  for e in h264_nvenc h264_vaapi; do
+    grep -aq "$e" "$bindir"/libavcodec.so.[0-9]* && ok "libavcodec has $e" || fail "libavcodec has no $e"
+  done
 else
   # What the program and its libraries need from Windows: only system libraries and each other, nothing that would have to be shipped with
   # them. The libraries are shared (the DLLs next to the program), and each is checked on its own.
