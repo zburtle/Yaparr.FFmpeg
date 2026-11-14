@@ -51,12 +51,17 @@ jobs:
           bash build.sh
 
       - name: Check
-        run: bash verify.sh "out/$(sed 's/^NAME=//' out/name.txt)/bin/ffmpeg.exe"
+        run: |
+          name="$(sed 's/^NAME=//' out/name.txt)"
+          bash verify.sh "out/check-$name/ffmpeg.exe" "out/$name/bin"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-yaparr
-          path: out/*
+          path: |
+            out/*.zip
+            out/*.tar.xz
+            out/name.txt
           if-no-files-found: error
 
   # The Linux builds: on Ubuntu 22.04, so the program runs on any system with glibc 2.35 or newer.
@@ -87,7 +92,9 @@ jobs:
           bash build-linux.sh ${{ matrix.arch }}
 
       - name: Check
-        run: xvfb-run -a bash verify.sh "out/$(sed 's/^NAME=//' out/name-linux-${{ matrix.arch }}.txt)/bin/ffmpeg"
+        run: |
+          name="$(sed 's/^NAME=//' out/name-linux-${{ matrix.arch }}.txt)"
+          xvfb-run -a bash verify.sh "out/check-$name/ffmpeg" "out/$name/bin"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -127,8 +134,8 @@ jobs:
           cat > notes.md <<EOF
           FFmpeg built for Yaparr (https://github.com/zburtle/Yaparr) with only the parts Yaparr uses (LGPL). Yaparr downloads this when it needs to share or show a screen.
 
-          - \`$name.zip\`: Windows x64, static. \`bin/ffmpeg.exe\`, the licence, \`SOURCE.txt\`, \`BUILD-INFO.txt\` (how it was configured) and the licences of what is built in.
-          - \`ffmpeg-yaparr-g*-linux-x64.zip\` and \`-linux-arm64.zip\`: Linux (glibc 2.35 or newer; VA-API is the computer's own). \`bin/ffmpeg\`, its shared libraries next to it (\`libavcodec.so.63\` and the others, which Yaparr loads into itself) and the same notices.
+          - \`$name.zip\`: Windows x64. FFmpeg's libraries in \`bin/\` (\`avcodec-63.dll\` and the others, and the DLLs they need), which Yaparr loads into itself, the licence, \`SOURCE.txt\`, \`BUILD-INFO.txt\` (how it was configured) and the licences of what is built in. No ffmpeg program.
+          - \`ffmpeg-yaparr-g*-linux-x64.zip\` and \`-linux-arm64.zip\`: Linux (glibc 2.35 or newer; VA-API is the computer's own). FFmpeg's shared libraries in \`bin/\` (\`libavcodec.so.63\` and the others) and the same notices. No ffmpeg program.
           - \`ffmpeg-*-source.tar.xz\`: the exact FFmpeg source this was built from.
           - Built by https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} at commit ${GITHUB_SHA}.
 
