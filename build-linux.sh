@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the FFmpeg that Yaparr uses to share and show screens on Linux: only the parts Yaparr uses, under the LGPL, as shared libraries
-# (libavcodec.so and the others) with an ffmpeg program that uses them, next to each other, for Linux x86-64 or arm64. Yaparr loads the
-# libraries into itself to encode and still runs the program to capture a screen. Run it on a Debian or Ubuntu machine (the workflow does, on Ubuntu 22.04, so the
+# (libavcodec.so and the others), for Linux x86-64 or arm64, which Yaparr loads into itself. An ffmpeg program is built too, only to check
+# the libraries with (verify.sh): it goes in a folder of its own beside the package (check-<name>, with copies of the libraries) and is not shipped. Run it on a Debian or Ubuntu machine (the workflow does, on Ubuntu 22.04, so the
 # program runs on any system with glibc 2.35 or newer); see README.md in this folder.
 #
 #   build-linux.sh [x64|arm64]   which machine to build for; it has to be this machine (default: this machine's)
@@ -11,7 +11,7 @@
 #
 # libvpx, dav1d and the X11 libraries (libxcb and its helpers) are linked in. Two things are not, on purpose: the C library, and
 # libva, which finds the graphics driver for H.264 on Intel and AMD cards and has to be the one of the computer it runs on.
-# NVIDIA's encoder library is opened by FFmpeg when it runs, so it is not linked either.
+# NVIDIA's encoder and decoder libraries (and CUDA's) are opened by FFmpeg when it runs, so they are not linked either.
 set -euo pipefail
 
 case "$(uname -m)" in
@@ -49,7 +49,9 @@ git clone --depth 1 --branch "$LIBVPX_TAG" https://github.com/webmproject/libvpx
 ( cd libvpx && ./configure --prefix="$PREFIX" --enable-static --disable-shared --enable-pic --enable-vp8 --disable-vp9     --disable-examples --disable-tools --disable-docs --disable-unit-tests >/dev/null && make -j"$(nproc)" >/dev/null && make install >/dev/null )
 
 # dav1d (BSD 2-clause), the AV1 decoder every viewer uses, built here for the same reasons (Ubuntu 22.04's own is too old for this FFmpeg).
-git clone --depth 1 --branch "$DAV1D_TAG" https://code.videolan.org/videolan/dav1d.git dav1d
+# (VideoLAN's own server first, then its mirror on GitHub when that server cannot be reached.)
+git clone --depth 1 --branch "$DAV1D_TAG" https://code.videolan.org/videolan/dav1d.git dav1d \
+  || { rm -rf dav1d; git clone --depth 1 --branch "$DAV1D_TAG" https://github.com/videolan/dav1d.git dav1d; }
 ( cd dav1d && meson setup build --prefix="$PREFIX" --libdir=lib --default-library=static -Dbuildtype=release -Denable_tools=false -Denable_tests=false -Denable_examples=false >/dev/null && ninja -C build >/dev/null && ninja -C build install >/dev/null )
 
 # Link these libraries statically: the linker takes the first folder it is given that has the library, and this one only has the
@@ -77,7 +79,10 @@ cd src
 # What goes in, and why (the same as the Windows build, with the Linux capture and card encoders in place of Windows' ones):
 #   libvpx_vp8, vp8            VP8 in software: the encoder for computers without a usable graphics card, and the decoder
 #   h264_nvenc, h264_vaapi     H.264 on NVIDIA graphics cards, and on Intel and AMD ones through VA-API (the card does the work)
-#   h264 (decoder, parser)     every viewer decodes H.264 in software
+#   h264 (decoder, parser)     every viewer decodes H.264 (in software, or on the graphics card, next line)
+#   h264_nvdec, h264_vaapi (hwaccels), cuda, nvdec, hwdownload, scale_vaapi   H.264 decoded on the graphics card: NVIDIA's (NVDEC, through
+#                              the driver's library, opened when it runs) or Intel's and AMD's (VA-API); the picture is copied back to memory,
+#                              and a preview is scaled on the card first (scale_vaapi) so that only the small picture is copied
 #   av1_nvenc, av1_vaapi       AV1 on NVIDIA graphics cards, and on Intel and AMD ones through VA-API (newer cards; the card does the work)
 #   libdav1d, av1 (parser), av1_metadata   every viewer decodes AV1 in software with dav1d; av1_metadata is what the IVF writer
 #                              uses to put a temporal delimiter in front of each picture
@@ -95,28 +100,29 @@ cd src
   --disable-doc --disable-debug --disable-network \
   --disable-ffplay --disable-ffprobe \
   --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
-  --enable-libvpx --enable-libdav1d --enable-vaapi --enable-ffnvcodec --enable-nvenc \
+  --enable-libvpx --enable-libdav1d --enable-vaapi --enable-ffnvcodec --enable-nvenc --enable-cuda --enable-nvdec \
   --enable-encoder=libvpx_vp8,h264_nvenc,h264_vaapi,av1_nvenc,av1_vaapi,rawvideo \
   --enable-decoder=vp8,h264,libdav1d,rawvideo,wrapped_avframe \
+  --enable-hwaccel=h264_nvdec,h264_vaapi \
   --enable-parser=h264,vp8,av1 \
   --enable-demuxer=ivf,h264,rawvideo \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=xcbgrab,lavfi \
   --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
-  --enable-filter=scale,format,null,hwupload,color,testsrc2 \
+  --enable-filter=scale,format,null,hwupload,hwdownload,scale_vaapi,color,testsrc2 \
   || { tail -n 80 ffbuild/config.log; exit 1; }
 
 make -j"$(nproc)"
 
-# The program finds its libraries next to itself once it is packaged; in the build folder they are each in their own folder.
+# The program (only for checking) finds its libraries next to itself once it is copied out; in the build folder they are each in their own folder.
 export LD_LIBRARY_PATH="$(for l in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do printf '%s:' "$PWD/$l"; done)${LD_LIBRARY_PATH:-}"
 
 VERSION="$(./ffbuild/version.sh .)"
 CONFIGURE_LINE="$(grep -m1 '^configuration:' <(./ffmpeg -hide_banner -version) | sed 's/^configuration: //')"
 cp ffmpeg "$OUT/$NAME/bin/ffmpeg"
-# The libraries go next to the program (its rpath is its own folder), each as one file under the name it is loaded by (libavcodec.so.63): a zip
-# keeps no links, and one file per library is a third of the size of the real file and its two names.
+# The libraries, each as one file under the name it is loaded by (libavcodec.so.63): a zip keeps no links, and one file per library is a third of the
+# size of the real file and its two names. Each finds the others next to itself (its rpath is its own folder).
 for lib in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do
   soname="$(readelf -d "$lib/$lib.so" | sed -n 's/.*SONAME.*\[\(.*\)\].*/\1/p')"
   [ -n "$soname" ] || { echo "no soname for $lib"; exit 1; }
@@ -127,6 +133,11 @@ strip --strip-unneeded "$OUT/$NAME/bin/ffmpeg" "$OUT/$NAME/bin"/lib*.so.*
 # expand the dollar sign, so it is set on the finished files.)
 patchelf --set-rpath '$ORIGIN' "$OUT/$NAME/bin/ffmpeg" "$OUT/$NAME/bin"/lib*.so.*
 chmod 755 "$OUT/$NAME/bin/ffmpeg"
+# The program, with copies of the libraries next to it, goes where verify.sh finds it, and out of the package: Yaparr does not run it.
+CHECK="$OUT/check-$NAME"
+rm -rf "$CHECK" && mkdir -p "$CHECK"
+cp -a "$OUT/$NAME/bin/"* "$CHECK/"
+rm "$OUT/$NAME/bin/ffmpeg"
 cp COPYING.LGPLv2.1 "$OUT/$NAME/LICENSE.txt"
 
 # The licences of what was built in: the Debian packages whose code (or headers) ended up in ffmpeg. Each package's own copyright
@@ -171,16 +182,16 @@ find "$LICENSE_DIR" -type d -empty -delete
   for pkg in $PACKAGES; do dpkg-query -W -f='${Package} ${Version}\n' "$pkg" 2>/dev/null || true; done
   echo
   echo "Compiler: $(gcc --version | head -1)"
-  echo "C library it was built against (the program needs this or newer): $(ldd --version | head -1)"
+  echo "C library it was built against (the libraries need this or newer): $(ldd --version | head -1)"
 } > "$OUT/$NAME/BUILD-INFO.txt"
 
 cat > "$OUT/$NAME/SOURCE.txt" <<EOF
 This is a build of FFmpeg, made for Yaparr (https://github.com/zburtle/Yaparr), with only the parts Yaparr uses.
 
 FFmpeg is licensed under the GNU Lesser General Public License, version 2.1 or later (LICENSE.txt). It is not built with any
-GPL or "nonfree" part. The parts of FFmpeg are shared libraries (the .so files next to the program), which Yaparr loads into itself
-and the program loads too; they are kept apart from Yaparr so that they can be replaced with a build of your own: put your libraries
-in the same place, or set YAPARR_FFMPEG_LIBS to the folder that has them (and YAPARR_FFMPEG to another ffmpeg program).
+GPL or "nonfree" part. It is FFmpeg's shared libraries (the .so files in the bin folder), which Yaparr loads into itself; there is no
+ffmpeg program. They are kept apart from Yaparr so that they can be replaced with a build of your own: put your libraries in the same
+place, or set YAPARR_FFMPEG_LIBS to the folder that has them.
 
 The source code of this build, the exact commit of FFmpeg that was built, is the file ffmpeg-g${SHORT}-source.tar.xz in the
 same release, and https://github.com/FFmpeg/FFmpeg/commit/${FFMPEG_COMMIT}.

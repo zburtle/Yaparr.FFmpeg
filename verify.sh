@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Checks a built ffmpeg: what is in it, what is not, and that it still does the things Yaparr asks of it.
-#   verify.sh path/to/ffmpeg.exe     (the Windows build)
-#   verify.sh path/to/ffmpeg         (a Linux build)
+# Checks a build of FFmpeg's libraries: what is in them, what is not, and that they still do the things Yaparr asks of them. The checks
+# are made with the ffmpeg program the build leaves beside the package (check-<name>, not shipped), which uses copies of the same libraries;
+# the libraries of the package itself are checked too, and that no program is shipped with them.
+#   verify.sh out/check-<name>/ffmpeg.exe out/<name>/bin     (the Windows build)
+#   verify.sh out/check-<name>/ffmpeg out/<name>/bin         (a Linux build)
 set -uo pipefail
 
-FF="${1:?usage: verify.sh path/to/ffmpeg[.exe]}"
+FF="${1:?usage: verify.sh path/to/check/ffmpeg[.exe] [path/to/package/bin]}"
+LIBS="${2:-$(dirname "$FF")}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
 failed=0
@@ -39,8 +42,13 @@ if [ "$PLATFORM" = windows ]; then
   wanted_decoders="vp8 h264 libdav1d"
 else
   wanted_encoders="libvpx h264_nvenc h264_vaapi av1_nvenc av1_vaapi rawvideo"
-  wanted_filters="hwupload format scale"
+  wanted_filters="hwupload hwdownload scale_vaapi format scale"
   wanted_decoders="vp8 h264 libdav1d rawvideo"
+fi
+if [ "$PLATFORM" != windows ]; then
+  # Decoding H.264 on the graphics card: NVIDIA's NVDEC (through CUDA) and VA-API for Intel and AMD; a preview scales on the card with scale_vaapi.
+  hwaccels="$("$FF" -hide_banner -hwaccels 2>&1)"
+  for a in cuda vaapi; do grep -q -x -- "$a" <<<"$hwaccels" && ok "hwaccel $a" || fail "hwaccel $a is missing"; done
 fi
 for e in $wanted_encoders; do has "$encoders" " $e " && ok "encoder $e" || fail "encoder $e is missing"; done
 for d in $wanted_decoders; do has "$decoders" " $d " && ok "decoder $d" || fail "decoder $d is missing"; done
@@ -120,14 +128,14 @@ if [ "$PLATFORM" = linux ]; then
 
   # The libraries are shared (the .so files next to the program, each under the name it is loaded by), and each must find the others next to itself
   # (its runpath is $ORIGIN), because Yaparr loads them into itself by their full paths.
-  bindir="$(dirname "$FF")"
+  bindir="$LIBS"
   for lib in avcodec avfilter avformat avdevice avutil swscale swresample; do
-    ls "$bindir"/lib$lib.so.[0-9]* >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing next to the program"
+    ls "$bindir"/lib$lib.so.[0-9]* >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing from the package"
   done
   # What the program and its libraries need from the system: the C library and VA-API only (and each other). libva has to be the computer's
   # own (it finds the graphics driver), and the C library is not shipped with it; everything else is linked in. The C library's symbols must
   # not be newer than the ones of the oldest system it is meant for (Ubuntu 22.04: glibc 2.35).
-  for file in "$FF" "$bindir"/lib*.so.*; do
+  for file in "$bindir"/lib*.so.*; do
     runpath="$(readelf -d "$file" | sed -n 's/.*R\(UN\)\{0,1\}PATH.*\[\(.*\)\].*/\2/p')"
     [ "$runpath" = '$ORIGIN' ] && ok "$(basename "$file") looks for libraries next to itself" || fail "$(basename "$file") has runpath '$runpath', not \$ORIGIN"
     deps="$(ldd "$file" | awk '{print $1}' | grep -v '^linux-vdso' | sort -u)"
@@ -144,12 +152,12 @@ if [ "$PLATFORM" = linux ]; then
 else
   # What the program and its libraries need from Windows: only system libraries and each other, nothing that would have to be shipped with
   # them. The libraries are shared (the DLLs next to the program), and each is checked on its own.
-  bindir="$(dirname "$FF")"
+  bindir="$LIBS"
   for lib in avcodec avfilter avformat avdevice avutil swscale swresample; do
-    ls "$bindir"/$lib-*.dll >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing next to the program"
+    ls "$bindir"/$lib-*.dll >/dev/null 2>&1 && ok "library $lib" || fail "library $lib is missing from the package"
   done
   if command -v objdump >/dev/null; then
-    for file in "$bindir"/*.exe "$bindir"/*.dll; do
+    for file in "$bindir"/*.dll; do
       deps="$(objdump -p "$file" | awk '/DLL Name/ {print tolower($3)}' | sort -u)"
       echo "$(basename "$file") loads: $(echo $deps)"
       odd="$(echo "$deps" | grep -v -E '^((av(codec|filter|format|device|util)|sw(scale|resample))-[0-9]+|libdav1d-[0-9]+|libvpx-[0-9]+|libvpl-[0-9]+|libwinpthread-[0-9]+|libgcc_s_seh-[0-9]+|libstdc\+\+-[0-9]+|kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|ws2_32|bcrypt|crypt32|d3d11|d3d12|dxgi|d3d9|mfplat|mf|combase|shlwapi|ntdll|msvcrt|api-ms-win-.*|ucrtbase|setupapi|secur32|userenv|winmm|imm32|version|comdlg32|propsys|dwmapi|dwrite|d2d1|windowscodecs|rpcrt4|powrprof|cfgmgr32|uuid|opengl32|cabinet)\.dll$' || true)"
@@ -165,7 +173,10 @@ else
   fi
 fi
 
-size="$(stat -c %s "$FF")"
-echo "$(basename "$FF") is $((size / 1024)) KB"
+# Only libraries are shipped: no ffmpeg program (Yaparr does not run one), nothing else that runs.
+programs="$(cd "$LIBS" && ls ffmpeg ffmpeg.exe ffprobe ffprobe.exe ffplay ffplay.exe 2>/dev/null || true)"
+[ -z "$programs" ] && ok "no program in the package" || fail "the package has a program in it: $programs"
+size="$(du -ck "$LIBS"/*.dll "$LIBS"/*.so.* 2>/dev/null | tail -1 | cut -f1)"
+echo "the libraries are ${size:-0} KB"
 rm -rf "$TMP"
 exit $failed

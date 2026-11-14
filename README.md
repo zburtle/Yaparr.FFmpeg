@@ -1,6 +1,6 @@
 # Yaparr.FFmpeg
 
-[Yaparr](https://github.com/zburtle/Yaparr) shares and shows screens by running FFmpeg as a separate program (see `src/Yaparr.Screen` there). This repository builds that FFmpeg with only the parts Yaparr uses, under the LGPL: for Windows x64 an `ffmpeg.exe` with FFmpeg's libraries (DLLs) next to it, which Yaparr also loads into itself to share a screen without a separate program, and an `ffmpeg` for Linux x64 and arm64.
+[Yaparr](https://github.com/zburtle/Yaparr) shares and shows screens with FFmpeg's libraries, loaded into itself (see `src/Yaparr.Screen` there). This repository builds those libraries with only the parts Yaparr uses, under the LGPL, as shared libraries: for Windows x64 (DLLs) and for Linux x64 and arm64 (`.so` files). No ffmpeg program is shipped: the build makes one only to check the libraries with (`verify.sh`), in a `check-<name>` folder beside the package.
 
 ## What is in it
 
@@ -24,19 +24,19 @@ The `Build` workflow (`.github/workflows/build.yml`) runs `build.sh` in MSYS2 on
 
 To publish a build, run the workflow by hand and give it a release tag such as `ffmpeg-4`. That creates a release holding:
 
-- `ffmpeg-yaparr-g<commit>-win64.zip`: `bin/ffmpeg.exe` and the libraries `bin/avcodec-*.dll`, `avfilter`, `avformat`, `avdevice`, `avutil`, `swscale` and `swresample`, `LICENSE.txt` (LGPL 2.1), `SOURCE.txt`, `BUILD-INFO.txt` (how it was configured, the versions of what was used) and `licenses/` (libvpx, oneVPL, AMF and NVIDIA headers, the compiler runtime);
+- `ffmpeg-yaparr-g<commit>-win64.zip`: the libraries `bin/avcodec-*.dll`, `avfilter`, `avformat`, `avdevice`, `avutil`, `swscale` and `swresample`, `LICENSE.txt` (LGPL 2.1), `SOURCE.txt`, `BUILD-INFO.txt` (how it was configured, the versions of what was used) and `licenses/` (libvpx, oneVPL, AMF and NVIDIA headers, the compiler runtime);
 - `ffmpeg-g<commit>-source.tar.xz`: the exact FFmpeg source it was built from;
-- `ffmpeg-yaparr-g<commit>-linux-x64.zip` and `-linux-arm64.zip`: `bin/ffmpeg` and the same notices (`LICENSE.txt`, `SOURCE.txt`, `BUILD-INFO.txt`, `licenses/`: libvpx, the X11 client libraries, the NVIDIA codec headers, libva);
+- `ffmpeg-yaparr-g<commit>-linux-x64.zip` and `-linux-arm64.zip`: the shared libraries `bin/libavcodec.so.63` and the others, and the same notices (`LICENSE.txt`, `SOURCE.txt`, `BUILD-INFO.txt`, `licenses/`: libvpx, the X11 client libraries, the NVIDIA codec headers, libva);
 - `SHA256SUMS.txt`.
 
-**The Linux program** is built on Ubuntu 22.04, so it runs on any system with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later). libvpx and the X11 client libraries (libxcb, libXau, libXdmcp) are linked in. Two things are not, on purpose: the C library, and libva (with libdrm), which finds the graphics driver for H.264 on Intel and AMD cards and has to be the computer's own, so that machine needs `libva2` installed for the program to start (desktops have it; Yaparr's `.deb` depends on it). NVIDIA's encoder library belongs to the driver and is opened when FFmpeg runs, so the program starts without it and falls back to the next encoder.
+**The Linux libraries** are built on Ubuntu 22.04, so they run on any system with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later). libvpx and the X11 client libraries (libxcb, libXau, libXdmcp) are linked in. Two things are not, on purpose: the C library, and libva (with libdrm), which finds the graphics driver for H.264 on Intel and AMD cards and has to be the computer's own, so that machine needs `libva2` installed for the libraries to load (desktops have it; Yaparr's `.deb` depends on it). NVIDIA's encoder and decoder libraries belong to the driver and are opened when they are used, so the libraries load without them and Yaparr falls back to the next encoder.
 
 The source file is what the LGPL asks for when the binary is passed on, so it always goes up with the build.
 
 ## Using a build
 
 1. Run the workflow with a release tag.
-2. Download the zip and run the integration tests against it from a checkout of Yaparr: `set YAPARR_FFMPEG=...\bin\ffmpeg.exe` then `dotnet test tests/Yaparr.Tests --filter FfmpegIntegration`, and try `tools/Yaparr.ScreenDemo` (see `src/Yaparr.Screen/README.md` there).
+2. Download the zip and run the tests that share a real monitor against its libraries from a checkout of Yaparr: `set YAPARR_FFMPEG_LIBS=...\bin`, then the tests and `tools/Yaparr.ScreenDemo` as `src/Yaparr.Screen/README.md` there says.
 3. Put the new URLs, SHA-256, sizes and the paths inside the zips into `FfmpegPackage` (`src/Yaparr.Screen/FfmpegInstaller.cs` in Yaparr: the Windows, Linux x64 and Linux arm64 packages), in a pull request there.
 
 The builds up to `ffmpeg-3` are releases of the Yaparr repository (https://github.com/zburtle/Yaparr/releases); they stay there, because Yaparr versions already out download them from those addresses.
