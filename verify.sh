@@ -38,12 +38,16 @@ decoders="$("$FF" -hide_banner -decoders 2>&1)"
 filters="$("$FF" -hide_banner -filters 2>&1)"
 if [ "$PLATFORM" = windows ]; then
   wanted_encoders="libvpx h264_nvenc h264_amf h264_qsv av1_nvenc av1_amf av1_qsv rawvideo"
+  [ "${WITH_HEVC:-1}" = 1 ] && wanted_encoders="$wanted_encoders hevc_nvenc hevc_amf hevc_qsv"
   wanted_filters="gfxcapture hwdownload format scale scale_d3d12"
   wanted_decoders="vp8 h264 libdav1d"
+  [ "${WITH_HEVC:-1}" = 1 ] && wanted_decoders="$wanted_decoders hevc"
 else
   wanted_encoders="libvpx h264_nvenc h264_vaapi av1_nvenc av1_vaapi rawvideo"
+  [ "${WITH_HEVC:-1}" = 1 ] && wanted_encoders="$wanted_encoders hevc_nvenc hevc_vaapi"
   wanted_filters="hwupload hwdownload scale_vaapi format scale"
   wanted_decoders="vp8 h264 libdav1d rawvideo"
+  [ "${WITH_HEVC:-1}" = 1 ] && wanted_decoders="$wanted_decoders hevc"
 fi
 if [ "$PLATFORM" != windows ]; then
   # Decoding H.264 on the graphics card: NVIDIA's NVDEC (through CUDA) and VA-API for Intel and AMD; a preview scales on the card with scale_vaapi.
@@ -55,7 +59,11 @@ for d in $wanted_decoders; do has "$decoders" " $d " && ok "decoder $d" || fail 
 for f in $wanted_filters; do has "$filters" " $f " && ok "filter $f" || fail "filter $f is missing"; done
 
 # Nothing that should not be there: the GPL encoders, other video codecs, the network.
-for e in libx264 libx265 libopenh264 libaom libaom-av1 mpeg4 hevc libsvtav1 librav1e; do has "$encoders" " $e " && fail "encoder $e should not be in this build" || ok "no encoder $e"; done
+# (hevc is the decoder's name and the hevc_* ones are the card encoders, wanted above while WITH_HEVC=1; with WITH_HEVC=0 they must be gone.)
+if [ "${WITH_HEVC:-1}" != 1 ]; then
+  for e in hevc hevc_nvenc hevc_amf hevc_qsv hevc_vaapi; do has "$encoders$decoders" " $e " && fail "$e should not be in this build (WITH_HEVC=0)" || ok "no $e"; done
+fi
+for e in libx264 libx265 libopenh264 libaom libaom-av1 mpeg4 libsvtav1 librav1e; do has "$encoders" " $e " && fail "encoder $e should not be in this build" || ok "no encoder $e"; done
 
 if [ "$PLATFORM" = windows ]; then
   # The gfxcapture options Yaparr's command line uses (the build must have the October 2026 fixes, dup_frames among them).
