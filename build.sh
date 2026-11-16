@@ -36,7 +36,14 @@ cd src
 #   gfxcapture, hwdownload, format, scale   Windows Graphics Capture, then the download and conversion of each picture
 #   lavfi, color, testsrc2, null, wrapped_avframe   only for Yaparr's tests and the checks in verify.sh
 #                              (wrapped_avframe is how FFmpeg itself reads a test source)
+#   hevc_nvenc, hevc_amf, hevc_qsv (hevc_vaapi on Linux), hevc (decoder, parser, hwaccels)   H.265, only while WITH_HEVC=1 (the default): encoded on graphics
+#                              cards only, decoded by anyone. WITH_HEVC=0 leaves all of it out (Yaparr's patent switch, ScreenFeatures.H265, goes with it).
 # Nothing else is switched on: no GPL part (no x264, x265), nothing "nonfree", no network, no other codec, no other program.
+WITH_HEVC="${WITH_HEVC:-1}"
+HEVC_ENC=""; HEVC_DEC=""; HEVC_PARSER=""; HEVC_HWACCEL=""
+if [ "$WITH_HEVC" = 1 ]; then
+  HEVC_ENC=",hevc_nvenc,hevc_amf,hevc_qsv"; HEVC_DEC=",hevc"; HEVC_PARSER=",hevc"; HEVC_HWACCEL=",hevc_d3d11va,hevc_d3d11va2,hevc_d3d12va,hevc_dxva2"
+fi
 ./configure \
   --prefix="$WORK/prefix" \
   --arch=x86_64 --target-os=mingw32 \
@@ -49,10 +56,10 @@ cd src
   --disable-ffplay --disable-ffprobe \
   --enable-d3d11va --enable-d3d12va --enable-dxva2 \
   --enable-libvpx --enable-libdav1d --enable-libvpl --enable-amf --enable-ffnvcodec --enable-nvenc \
-  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo \
-  --enable-decoder=vp8,h264,libdav1d,wrapped_avframe \
-  --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_d3d12va,h264_dxva2 \
-  --enable-parser=h264,vp8,av1 \
+  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo${HEVC_ENC} \
+  --enable-decoder=vp8,h264,libdav1d,wrapped_avframe${HEVC_DEC} \
+  --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_d3d12va,h264_dxva2${HEVC_HWACCEL} \
+  --enable-parser=h264,vp8,av1${HEVC_PARSER} \
   --enable-demuxer=ivf,h264 \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=lavfi \

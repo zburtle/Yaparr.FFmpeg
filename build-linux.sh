@@ -90,7 +90,14 @@ cd src
 #                              the pictures GStreamer reads from the Wayland portal)
 #   xcbgrab (x11grab), hwupload, format, scale   copying an X11 screen or window, then the conversion of each picture
 #   lavfi, color, testsrc2, null, wrapped_avframe   only for Yaparr's tests and the checks in verify.sh
+#   hevc_nvenc, hevc_amf, hevc_qsv (hevc_vaapi on Linux), hevc (decoder, parser, hwaccels)   H.265, only while WITH_HEVC=1 (the default): encoded on graphics
+#                              cards only, decoded by anyone. WITH_HEVC=0 leaves all of it out (Yaparr's patent switch, ScreenFeatures.H265, goes with it).
 # Nothing else is switched on: no GPL part (no x264, x265), nothing "nonfree", no network, no other codec, no other program.
+WITH_HEVC="${WITH_HEVC:-1}"
+HEVC_ENC=""; HEVC_DEC=""; HEVC_PARSER=""; HEVC_HWACCEL=""
+if [ "$WITH_HEVC" = 1 ]; then
+  HEVC_ENC=",hevc_nvenc,hevc_vaapi"; HEVC_DEC=",hevc"; HEVC_PARSER=",hevc"; HEVC_HWACCEL=",hevc_nvdec,hevc_vaapi"
+fi
 ./configure \
   --prefix="$PREFIX" \
   --pkg-config-flags=--static \
@@ -101,10 +108,10 @@ cd src
   --disable-ffplay --disable-ffprobe \
   --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
   --enable-libvpx --enable-libdav1d --enable-vaapi --enable-ffnvcodec --enable-nvenc --enable-cuda --enable-nvdec \
-  --enable-encoder=libvpx_vp8,h264_nvenc,h264_vaapi,av1_nvenc,av1_vaapi,rawvideo \
-  --enable-decoder=vp8,h264,libdav1d,rawvideo,wrapped_avframe \
-  --enable-hwaccel=h264_nvdec,h264_vaapi \
-  --enable-parser=h264,vp8,av1 \
+  --enable-encoder=libvpx_vp8,h264_nvenc,h264_vaapi,av1_nvenc,av1_vaapi,rawvideo${HEVC_ENC} \
+  --enable-decoder=vp8,h264,libdav1d,rawvideo,wrapped_avframe${HEVC_DEC} \
+  --enable-hwaccel=h264_nvdec,h264_vaapi${HEVC_HWACCEL} \
+  --enable-parser=h264,vp8,av1${HEVC_PARSER} \
   --enable-demuxer=ivf,h264,rawvideo \
   --enable-muxer=ivf,h264,rawvideo,null \
   --enable-indev=xcbgrab,lavfi \
