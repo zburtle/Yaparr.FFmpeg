@@ -34,6 +34,9 @@ cd src
 #                              uses to put a temporal delimiter in front of each picture
 #   ivf, h264 (demuxers/muxers), rawvideo, pipe   the pictures go in and out through standard input and output
 #   gfxcapture, hwdownload, format, scale   Windows Graphics Capture, then the download and conversion of each picture
+#   mpegts (demuxer), aac (decoder, parser)   a movie from a media server (Jellyfin) arrives as an MPEG transport stream of H.264 and AAC; Yaparr
+#                              fetches it itself (this build has no network) and hands the bytes over. FFmpeg's own AAC decoder is LGPL.
+#                              The mpegts and f32le muxers, the aac and pcm_f32le encoders, anullsrc and aresample are only there so that verify.sh can make such a stream and check it.
 #   lavfi, color, testsrc2, null, wrapped_avframe   only for Yaparr's tests and the checks in verify.sh
 #                              (wrapped_avframe is how FFmpeg itself reads a test source)
 #   hevc_nvenc, hevc_amf, hevc_qsv (hevc_vaapi on Linux), hevc (decoder, parser, hwaccels)   H.265, only while WITH_HEVC=1 (the default): encoded on graphics
@@ -56,16 +59,16 @@ fi
   --disable-ffplay --disable-ffprobe \
   --enable-d3d11va --enable-d3d12va --enable-dxva2 \
   --enable-libvpx --enable-libdav1d --enable-libvpl --enable-amf --enable-ffnvcodec --enable-nvenc \
-  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo${HEVC_ENC} \
-  --enable-decoder=vp8,h264,libdav1d,wrapped_avframe${HEVC_DEC} \
+  --enable-encoder=libvpx_vp8,h264_nvenc,h264_amf,h264_qsv,av1_nvenc,av1_amf,av1_qsv,rawvideo,aac,pcm_f32le${HEVC_ENC} \
+  --enable-decoder=vp8,h264,libdav1d,wrapped_avframe,aac${HEVC_DEC} \
   --enable-hwaccel=h264_d3d11va,h264_d3d11va2,h264_d3d12va,h264_dxva2${HEVC_HWACCEL} \
-  --enable-parser=h264,vp8,av1${HEVC_PARSER} \
-  --enable-demuxer=ivf,h264 \
-  --enable-muxer=ivf,h264,rawvideo,null \
+  --enable-parser=h264,vp8,av1,aac${HEVC_PARSER} \
+  --enable-demuxer=ivf,h264,mpegts \
+  --enable-muxer=ivf,h264,rawvideo,null,mpegts,f32le \
   --enable-indev=lavfi \
   --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
-  --enable-filter=gfxcapture,hwdownload,format,scale,scale_d3d12,color,testsrc2 \
+  --enable-filter=gfxcapture,hwdownload,format,scale,scale_d3d12,color,testsrc2,anullsrc,aresample \
   || { tail -n 80 ffbuild/config.log; exit 1; }
 
 make -j"$(nproc)"
