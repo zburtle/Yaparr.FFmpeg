@@ -91,7 +91,7 @@ cd src
 #   xcbgrab (x11grab), hwupload, format, scale   copying an X11 screen or window, then the conversion of each picture
 #   mpegts (demuxer), aac (decoder, parser)   a movie from a media server (Jellyfin) arrives as an MPEG transport stream of H.264 and AAC; Yaparr
 #                              fetches it itself (this build has no network) and hands the bytes over. FFmpeg's own AAC decoder is LGPL.
-#                              The mpegts and f32le muxers, the aac and pcm_f32le encoders, anullsrc and aresample are only there so that verify.sh can make such a stream and check it.
+#                              The mpegts and pcm_f32le muxers, the aac and pcm_f32le encoders, anullsrc and aresample are only there so that verify.sh can make such a stream and check it.
 #   lavfi, color, testsrc2, null, wrapped_avframe   only for Yaparr's tests and the checks in verify.sh
 #   hevc_nvenc, hevc_amf, hevc_qsv (hevc_vaapi on Linux), hevc (decoder, parser, hwaccels)   H.265, only while WITH_HEVC=1 (the default): encoded on graphics
 #                              cards only, decoded by anyone. WITH_HEVC=0 leaves all of it out (Yaparr's patent switch, ScreenFeatures.H265, goes with it).
@@ -116,7 +116,7 @@ fi
   --enable-hwaccel=h264_nvdec,h264_vaapi${HEVC_HWACCEL} \
   --enable-parser=h264,vp8,av1,aac${HEVC_PARSER} \
   --enable-demuxer=ivf,h264,rawvideo,mpegts \
-  --enable-muxer=ivf,h264,rawvideo,null,mpegts,f32le \
+  --enable-muxer=ivf,h264,rawvideo,null,mpegts,pcm_f32le \
   --enable-indev=xcbgrab,lavfi \
   --enable-bsf=h264_mp4toannexb,av1_metadata \
   --enable-protocol=pipe,file \
