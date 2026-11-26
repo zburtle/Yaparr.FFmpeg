@@ -40,13 +40,13 @@ if [ "$PLATFORM" = windows ]; then
   wanted_encoders="libvpx h264_nvenc h264_amf h264_qsv av1_nvenc av1_amf av1_qsv rawvideo"
   [ "${WITH_HEVC:-1}" = 1 ] && wanted_encoders="$wanted_encoders hevc_nvenc hevc_amf hevc_qsv"
   wanted_filters="gfxcapture hwdownload format scale scale_d3d12"
-  wanted_decoders="vp8 h264 libdav1d"
+  wanted_decoders="vp8 h264 libdav1d aac"
   [ "${WITH_HEVC:-1}" = 1 ] && wanted_decoders="$wanted_decoders hevc"
 else
   wanted_encoders="libvpx h264_nvenc h264_vaapi av1_nvenc av1_vaapi rawvideo"
   [ "${WITH_HEVC:-1}" = 1 ] && wanted_encoders="$wanted_encoders hevc_nvenc hevc_vaapi"
   wanted_filters="hwupload hwdownload scale_vaapi format scale"
-  wanted_decoders="vp8 h264 libdav1d rawvideo"
+  wanted_decoders="vp8 h264 libdav1d rawvideo aac"
   [ "${WITH_HEVC:-1}" = 1 ] && wanted_decoders="$wanted_decoders hevc"
 fi
 if [ "$PLATFORM" != windows ]; then
@@ -117,6 +117,15 @@ fi
 # H.264 in software (no card here to encode it): a small stream made with another encoder.
 "$FF" -hide_banner -loglevel error -probesize 32 -analyzeduration 0 -f h264 -i "$HERE/tests/tiny.h264" -f rawvideo -pix_fmt bgra "$TMP/b.raw" \
   && [ "$(stat -c %s "$TMP/b.raw")" = "$((64 * 64 * 4 * 5))" ] && ok "H.264 decodes to 5 pictures of 64x64" || fail "H.264 decode ($(stat -c %s "$TMP/b.raw" 2>/dev/null) bytes)"
+
+# A movie from a media server: an MPEG transport stream of H.264 and AAC, read from standard input (Yaparr fetches it over HTTP itself and
+# hands the bytes over), giving 5 pictures of 64x64 and one second of 48 kHz stereo sound (the AAC decoder skips its first 1024 samples).
+demuxers="$("$FF" -hide_banner -demuxers 2>&1)"
+has "$demuxers" " mpegts " && ok "demuxer mpegts" || fail "demuxer mpegts is missing"
+"$FF" -hide_banner -loglevel info -framerate 5 -f h264 -i "$HERE/tests/tiny.h264" -filter_complex anullsrc=r=48000:cl=stereo[a]   -t 1 -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 96k -f mpegts "$TMP/m.ts" 2>"$TMP/m.log" && [ -s "$TMP/m.ts" ] && ok "H.264 and AAC in a transport stream" || { cat "$TMP/m.log"; fail "H.264 and AAC in a transport stream"; }
+"$FF" -hide_banner -loglevel error -f mpegts -i pipe:0 -map 0:v -f rawvideo -pix_fmt bgra "$TMP/m.raw" -map 0:a -f f32le -ar 48000 -ac 2 "$TMP/m.pcm" < "$TMP/m.ts"   && [ "$(stat -c %s "$TMP/m.raw")" = "$((64 * 64 * 4 * 5))" ] && ok "the stream's picture decodes to 5 pictures of 64x64" || fail "transport stream picture ($(stat -c %s "$TMP/m.raw" 2>/dev/null) bytes)"
+pcm="$(stat -c %s "$TMP/m.pcm" 2>/dev/null || echo 0)"
+[ "$pcm" -ge $((48000 * 2 * 4 * 9 / 10)) ] && [ "$pcm" -le $((48000 * 2 * 4 * 12 / 10)) ] && ok "the stream's sound decodes to about a second of stereo ($pcm bytes)" || fail "transport stream sound ($pcm bytes)"
 
 # Standard input and output, which is how Yaparr feeds and reads it.
 cat "$TMP/a.ivf" | "$FF" -hide_banner -loglevel error -f ivf -i pipe:0 -f rawvideo -pix_fmt bgra pipe:1 | wc -c | grep -q "^$((320 * 240 * 4 * 20))$" \

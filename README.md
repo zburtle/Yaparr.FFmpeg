@@ -14,7 +14,8 @@
 | Capture | Windows: the `gfxcapture` filter (Windows Graphics Capture), `hwdownload`, `format`, `scale`. Linux: `x11grab`, `hwupload`, `format`, `scale` |
 | Linux H.264 on the graphics card | `h264_nvenc` (NVIDIA) and `h264_vaapi` (Intel and AMD, through VA-API) instead of the three Windows ones |
 | Input and output | the `pipe` protocol, raw pictures (on Linux also as input: the Wayland pictures GStreamer reads), the raw H.264 stream |
-| Tests only | `lavfi`, the `color` and `testsrc2` filters, the `null` muxer |
+| A movie from a media server (Jellyfin) | the `mpegts` demuxer and the `aac` decoder and parser: the server sends an MPEG transport stream of H.264 and AAC, which Yaparr fetches itself (there is no network in this build) and hands over as bytes. The `aac` decoder is FFmpeg's own (LGPL) |
+| Tests only | `lavfi`, the `color`, `testsrc2`, `anullsrc` and `aresample` filters, the `null`, `mpegts` and `pcm_f32le` muxers, the `aac` and `pcm_f32le` encoders (`verify.sh` makes a transport stream with them and decodes it) |
 
 Nothing else: no GPL part (no x264, no x265), nothing "nonfree", no network, no other codec. `verify.sh` checks all of that on every build and fails if a GPL or nonfree flag, an unexpected codec, or a DLL (Windows) or shared library (Linux) that would have to be shipped with it shows up.
 
