@@ -122,7 +122,7 @@ fi
 # hands the bytes over), giving 5 pictures of 64x64 and one second of 48 kHz stereo sound (the AAC decoder skips its first 1024 samples).
 demuxers="$("$FF" -hide_banner -demuxers 2>&1)"
 has "$demuxers" " mpegts " && ok "demuxer mpegts" || fail "demuxer mpegts is missing"
-"$FF" -hide_banner -loglevel info -framerate 5 -f h264 -i "$HERE/tests/tiny.h264" -f lavfi -i anullsrc=r=48000:cl=stereo   -t 1 -c:v copy -c:a aac -b:a 96k -f mpegts "$TMP/m.ts" 2>"$TMP/m.log" && [ -s "$TMP/m.ts" ] && ok "H.264 and AAC in a transport stream" || { cat "$TMP/m.log"; fail "H.264 and AAC in a transport stream"; }
+"$FF" -hide_banner -loglevel info -framerate 5 -f h264 -i "$HERE/tests/tiny.h264" -filter_complex anullsrc=r=48000:cl=stereo[a]   -t 1 -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 96k -f mpegts "$TMP/m.ts" 2>"$TMP/m.log" && [ -s "$TMP/m.ts" ] && ok "H.264 and AAC in a transport stream" || { cat "$TMP/m.log"; fail "H.264 and AAC in a transport stream"; }
 "$FF" -hide_banner -loglevel error -f mpegts -i pipe:0 -map 0:v -f rawvideo -pix_fmt bgra "$TMP/m.raw" -map 0:a -f f32le -ar 48000 -ac 2 "$TMP/m.pcm" < "$TMP/m.ts"   && [ "$(stat -c %s "$TMP/m.raw")" = "$((64 * 64 * 4 * 5))" ] && ok "the stream's picture decodes to 5 pictures of 64x64" || fail "transport stream picture ($(stat -c %s "$TMP/m.raw" 2>/dev/null) bytes)"
 pcm="$(stat -c %s "$TMP/m.pcm" 2>/dev/null || echo 0)"
 [ "$pcm" -ge $((48000 * 2 * 4 * 9 / 10)) ] && [ "$pcm" -le $((48000 * 2 * 4 * 12 / 10)) ] && ok "the stream's sound decodes to about a second of stereo ($pcm bytes)" || fail "transport stream sound ($pcm bytes)"
